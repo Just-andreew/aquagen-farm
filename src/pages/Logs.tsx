@@ -2,15 +2,17 @@ import { useState } from 'react';
 import { useData } from '@/contexts/DataContext';
 import { LogFilters } from '@/components/LogFilters';
 import { EmergencyReportModal } from '@/components/EmergencyReportModal';
+import { AddLogModal } from '@/components/AddLogModal';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { AlertCircle, Download } from 'lucide-react';
+import { AlertCircle, Download, Plus } from 'lucide-react';
 import { format } from 'date-fns';
 
 const Logs = () => {
   const { logs } = useData();
   const [isEmergencyModalOpen, setIsEmergencyModalOpen] = useState(false);
+  const [isAddLogModalOpen, setIsAddLogModalOpen] = useState(false);
   const [filteredLogs, setFilteredLogs] = useState(logs);
 
   const handleExport = () => {
@@ -38,6 +40,10 @@ const Logs = () => {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <h1 className="text-3xl font-bold">Logs</h1>
         <div className="flex gap-2">
+          <Button onClick={() => setIsAddLogModalOpen(true)} variant="outline" className="gap-2">
+            <Plus className="w-4 h-4" />
+            Add Log
+          </Button>
           <Button onClick={handleExport} variant="outline" className="gap-2">
             <Download className="w-4 h-4" />
             Export CSV
@@ -93,6 +99,7 @@ const Logs = () => {
         </Table>
       </Card>
 
+      <AddLogModal open={isAddLogModalOpen} onOpenChange={setIsAddLogModalOpen} />
       <EmergencyReportModal open={isEmergencyModalOpen} onOpenChange={setIsEmergencyModalOpen} />
     </div>
   );

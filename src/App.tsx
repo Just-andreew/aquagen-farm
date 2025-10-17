@@ -11,13 +11,27 @@ import Dashboard from "./pages/Dashboard";
 import Tasks from "./pages/Tasks";
 import Logs from "./pages/Logs";
 import Inventory from "./pages/Inventory";
+import AdminDashboard from "./pages/admin/AdminDashboard";
+import Management from "./pages/admin/Management";
+import AdminLogs from "./pages/admin/AdminLogs";
+import AdminInventory from "./pages/admin/AdminInventory";
+import Reports from "./pages/admin/Reports";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
 
-const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
-  const { isAuthenticated } = useAuth();
-  return isAuthenticated ? <Layout>{children}</Layout> : <Navigate to="/" />;
+const ProtectedRoute = ({ children, allowedRoles }: { children: React.ReactNode; allowedRoles?: string[] }) => {
+  const { isAuthenticated, user } = useAuth();
+  
+  if (!isAuthenticated) {
+    return <Navigate to="/" />;
+  }
+  
+  if (allowedRoles && user && !allowedRoles.includes(user.role)) {
+    return <Navigate to="/dashboard" />;
+  }
+  
+  return <Layout>{children}</Layout>;
 };
 
 const App = () => (
@@ -34,6 +48,11 @@ const App = () => (
               <Route path="/tasks" element={<ProtectedRoute><Tasks /></ProtectedRoute>} />
               <Route path="/logs" element={<ProtectedRoute><Logs /></ProtectedRoute>} />
               <Route path="/inventory" element={<ProtectedRoute><Inventory /></ProtectedRoute>} />
+              <Route path="/admin" element={<ProtectedRoute allowedRoles={['admin']}><AdminDashboard /></ProtectedRoute>} />
+              <Route path="/admin/management" element={<ProtectedRoute allowedRoles={['admin']}><Management /></ProtectedRoute>} />
+              <Route path="/admin/logs" element={<ProtectedRoute allowedRoles={['admin']}><AdminLogs /></ProtectedRoute>} />
+              <Route path="/admin/inventory" element={<ProtectedRoute allowedRoles={['admin']}><AdminInventory /></ProtectedRoute>} />
+              <Route path="/admin/reports" element={<ProtectedRoute allowedRoles={['admin']}><Reports /></ProtectedRoute>} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </BrowserRouter>

@@ -37,15 +37,28 @@ export interface InventoryItem {
   last_updated: string;
 }
 
+export interface InventoryHistoryEntry {
+  id: string;
+  item_id: string;
+  item_name: string;
+  change: number;
+  changed_by: string;
+  changed_by_name: string;
+  reason: string;
+  timestamp: string;
+}
+
 interface DataContextType {
   tasks: Task[];
   logs: Log[];
   inventory: InventoryItem[];
+  inventoryHistory: InventoryHistoryEntry[];
   addTask: (task: Omit<Task, 'id' | 'created_at' | 'updated_at'>) => void;
   updateTask: (id: string, updates: Partial<Task>) => void;
   addLog: (log: Omit<Log, 'id' | 'timestamp'>) => void;
-  updateInventory: (id: string, quantity: number) => void;
+  updateInventory: (id: string, quantity: number, reason?: string, userId?: string, userName?: string) => void;
   consumeInventory: (items: { item_id: string; quantity: number }[]) => void;
+  addInventoryItem: (item: Omit<InventoryItem, 'id' | 'last_updated'>) => void;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -86,15 +99,18 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [tasks, setTasks] = useState<Task[]>([]);
   const [logs, setLogs] = useState<Log[]>([]);
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
+  const [inventoryHistory, setInventoryHistory] = useState<InventoryHistoryEntry[]>([]);
 
   useEffect(() => {
     const storedTasks = localStorage.getItem('aquagen_tasks');
     const storedLogs = localStorage.getItem('aquagen_logs');
     const storedInventory = localStorage.getItem('aquagen_inventory');
+    const storedHistory = localStorage.getItem('aquagen_inventory_history');
 
     setTasks(storedTasks ? JSON.parse(storedTasks) : INITIAL_TASKS);
     setLogs(storedLogs ? JSON.parse(storedLogs) : []);
     setInventory(storedInventory ? JSON.parse(storedInventory) : INITIAL_INVENTORY);
+    setInventoryHistory(storedHistory ? JSON.parse(storedHistory) : []);
   }, []);
 
   useEffect(() => {
@@ -108,6 +124,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     localStorage.setItem('aquagen_inventory', JSON.stringify(inventory));
   }, [inventory]);
+
+  useEffect(() => {
+    localStorage.setItem('aquagen_inventory_history', JSON.stringify(inventoryHistory));
+  }, [inventoryHistory]);
 
   const addTask = (task: Omit<Task, 'id' | 'created_at' | 'updated_at'>) => {
     const newTask: Task = {
@@ -136,11 +156,25 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setLogs(prev => [newLog, ...prev]);
   };
 
-  const updateInventory = (id: string, quantity: number) => {
+  const updateInventory = (id: string, quantity: number, reason: string = 'Manual adjustment', userId: string = 'system', userName: string = 'System') => {
     setInventory(prev =>
       prev.map(item => {
         if (item.id === id) {
           const newQuantity = item.quantity + quantity;
+          
+          // Track history
+          const historyEntry: InventoryHistoryEntry = {
+            id: Date.now().toString(),
+            item_id: id,
+            item_name: item.item_name,
+            change: quantity,
+            changed_by: userId,
+            changed_by_name: userName,
+            reason,
+            timestamp: new Date().toISOString(),
+          };
+          setInventoryHistory(prev => [historyEntry, ...prev]);
+          
           return {
             ...item,
             quantity: Math.max(0, newQuantity),
@@ -153,6 +187,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     );
   };
 
+  const addInventoryItem = (item: Omit<InventoryItem, 'id' | 'last_updated'>) => {
+    const newItem: InventoryItem = {
+      ...item,
+      id: Date.now().toString(),
+      last_updated: new Date().toISOString(),
+    };
+    setInventory(prev => [...prev, newItem]);
+  };
+
   const consumeInventory = (items: { item_id: string; quantity: number }[]) => {
     items.forEach(({ item_id, quantity }) => {
       updateInventory(item_id, -quantity);
@@ -161,7 +204,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   return (
     <DataContext.Provider
-      value={{ tasks, logs, inventory, addTask, updateTask, addLog, updateInventory, consumeInventory }}
+      value={{ tasks, logs, inventory, inventoryHistory, addTask, updateTask, addLog, updateInventory, consumeInventory, addInventoryItem }}
     >
       {children}
     </DataContext.Provider>

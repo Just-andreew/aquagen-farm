@@ -1,11 +1,15 @@
 import { useState } from 'react';
 import { useData } from '@/contexts/DataContext';
 import { InventoryCard } from '@/components/InventoryCard';
+import { AddInventoryModal } from '@/components/AddInventoryModal';
+import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Plus } from 'lucide-react';
 import type { InventoryStatus } from '@/contexts/DataContext';
 
 const Inventory = () => {
   const { inventory } = useData();
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
 
   const getItemsByStatus = (status: InventoryStatus) => 
     inventory.filter(item => item.status === status);
@@ -18,7 +22,13 @@ const Inventory = () => {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-bold">Inventory</h1>
+      <div className="flex justify-between items-center">
+        <h1 className="text-3xl font-bold">Inventory</h1>
+        <Button onClick={() => setIsAddModalOpen(true)} className="gap-2">
+          <Plus className="w-4 h-4" />
+          Add New Item
+        </Button>
+      </div>
 
       <Tabs defaultValue="in_stock" className="w-full">
         <TabsList className="grid w-full grid-cols-3">
@@ -47,6 +57,8 @@ const Inventory = () => {
           </TabsContent>
         ))}
       </Tabs>
+
+      <AddInventoryModal open={isAddModalOpen} onOpenChange={setIsAddModalOpen} />
     </div>
   );
 };
