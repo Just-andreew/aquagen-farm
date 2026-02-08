@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useData } from '@/contexts/DataContext';
-import { useAuth } from '@/contexts/AuthContext';
+import { Task, useData } from '@/contexts/DataContext';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,13 +7,13 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
-// Firebase imports
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 
-interface TaskModalProps {
+interface EditTaskModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  task: Task;
 }
 
 interface UserOption {
@@ -22,31 +21,27 @@ interface UserOption {
   name: string;
 }
 
-export const TaskModal = ({ open, onOpenChange }: TaskModalProps) => {
-  const { addTask } = useData();
-  const { user } = useAuth();
+export const EditTaskModal = ({ open, onOpenChange, task }: EditTaskModalProps) => {
+  const { updateTask } = useData();
   
-  // Form State
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [assignedTo, setAssignedTo] = useState('');
+  // Initialize state with the existing task data
+  const [title, setTitle] = useState(task.title);
+  const [description, setDescription] = useState(task.description);
+  const [assignedTo, setAssignedTo] = useState(task.assigned_to);
   
-  // Data State
   const [availableUsers, setAvailableUsers] = useState<UserOption[]>([]);
   const [isLoadingUsers, setIsLoadingUsers] = useState(false);
 
-  // Fetch users from Firestore when the modal opens
+  // Fetch users (Same logic as TaskModal)
   useEffect(() => {
     const fetchUsers = async () => {
-      if (!open) return; // Only fetch when open
-      
+      if (!open) return;
       setIsLoadingUsers(true);
       try {
         const querySnapshot = await getDocs(collection(db, "users"));
         const usersList: UserOption[] = [];
         querySnapshot.forEach((doc) => {
           const data = doc.data();
-          // Only add if they have a name
           if (data.name) {
             usersList.push({ id: doc.id, name: data.name });
           }
@@ -54,16 +49,14 @@ export const TaskModal = ({ open, onOpenChange }: TaskModalProps) => {
         setAvailableUsers(usersList);
       } catch (error) {
         console.error("Error fetching users:", error);
-        toast.error("Failed to load user list");
       } finally {
         setIsLoadingUsers(false);
       }
     };
-
     fetchUsers();
   }, [open]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!title.trim()) {
@@ -71,29 +64,17 @@ export const TaskModal = ({ open, onOpenChange }: TaskModalProps) => {
       return;
     }
 
-    if (!assignedTo) {
-      toast.error('Please assign the task to someone');
-      return;
-    }
+    const assignedUserName = availableUsers.find(u => u.id === assignedTo)?.name || task.assigned_to_name;
 
-    // Find the name of the assigned user for display purposes
-    const assignedUserName = availableUsers.find(u => u.id === assignedTo)?.name || 'Unknown';
-
-    addTask({
+    // Call updateTask instead of addTask
+    await updateTask(task.id, {
       title: title.trim(),
       description: description.trim(),
-      status: 'todo',
       assigned_to: assignedTo,
       assigned_to_name: assignedUserName,
-      created_by: user?.id || 'unknown',
     });
 
-    toast.success('Task created successfully');
-    
-    // Reset form
-    setTitle('');
-    setDescription('');
-    setAssignedTo('');
+    toast.success('Task updated successfully');
     onOpenChange(false);
   };
 
@@ -101,46 +82,40 @@ export const TaskModal = ({ open, onOpenChange }: TaskModalProps) => {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
-          <DialogTitle>Create New Task</DialogTitle>
+          <DialogTitle>Edit Task</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="title">Title</Label>
+            <Label htmlFor="edit-title">Title</Label>
             <Input
-              id="title"
+              id="edit-title"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="Enter task title"
             />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="description">Description</Label>
+            <Label htmlFor="edit-description">Description</Label>
             <Textarea
-              id="description"
+              id="edit-description"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Enter task description"
               rows={3}
             />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="assignedTo">Assign To</Label>
+            <Label htmlFor="edit-assignedTo">Assign To</Label>
             <Select value={assignedTo} onValueChange={setAssignedTo} disabled={isLoadingUsers}>
               <SelectTrigger>
-                <SelectValue placeholder={isLoadingUsers ? "Loading team..." : "Select a team member"} />
+                <SelectValue placeholder={isLoadingUsers ? "Loading..." : "Select team member"} />
               </SelectTrigger>
               <SelectContent>
-                {availableUsers.length === 0 && !isLoadingUsers ? (
-                  <SelectItem value="none" disabled>No users found</SelectItem>
-                ) : (
-                  availableUsers.map((u) => (
-                    <SelectItem key={u.id} value={u.id}>
-                      {u.name}
-                    </SelectItem>
-                  ))
-                )}
+                {availableUsers.map((u) => (
+                  <SelectItem key={u.id} value={u.id}>
+                    {u.name}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
@@ -149,7 +124,7 @@ export const TaskModal = ({ open, onOpenChange }: TaskModalProps) => {
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button type="submit">Create Task</Button>
+            <Button type="submit">Save Changes</Button>
           </div>
         </form>
       </DialogContent>
