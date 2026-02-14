@@ -26,6 +26,7 @@ export interface Task {
   created_at: string;
   updated_at: string;
   updated_by?: string;
+  due_date?: string;
 }
 
 export interface Log {

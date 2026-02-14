@@ -1,10 +1,10 @@
-import { useState } from "react"; // Added useState
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ChevronLeft, ChevronRight, Trash2, CalendarDays, User, Pencil } from "lucide-react"; // Added Pencil
+import { ChevronLeft, ChevronRight, Trash2, CalendarDays, User, Pencil, Clock } from "lucide-react";
 import { Task, useData } from "@/contexts/DataContext";
 import { toast } from "sonner";
-import { EditTaskModal } from "./EditTaskModal"; // Import the new modal
+import { EditTaskModal } from "./EditTaskModal";
 
 interface TaskCardProps {
   task: Task;
@@ -12,13 +12,22 @@ interface TaskCardProps {
 
 export const TaskCard = ({ task }: TaskCardProps) => {
   const { updateTask, deleteTask } = useData();
-  const [isEditOpen, setIsEditOpen] = useState(false); // State for the edit modal
+  const [isEditOpen, setIsEditOpen] = useState(false);
 
   const statusOrder: Task['status'][] = ['todo', 'in_progress', 'done'];
   const currentIndex = statusOrder.indexOf(task.status);
   
   const canMoveLeft = currentIndex > 0;
   const canMoveRight = currentIndex < statusOrder.length - 1;
+
+  // Kenya Date Format
+  const formatKenyanDate = (dateString?: string) => {
+    if (!dateString) return '';
+    return new Date(dateString).toLocaleDateString('en-GB');
+  };
+
+  const isOverdue = task.due_date && new Date(task.due_date) < new Date() && task.status !== 'done';
+  const isDueToday = task.due_date && new Date(task.due_date).toDateString() === new Date().toDateString();
 
   const handleMove = async (direction: 'left' | 'right') => {
     const newIndex = direction === 'left' ? currentIndex - 1 : currentIndex + 1;
@@ -35,44 +44,42 @@ export const TaskCard = ({ task }: TaskCardProps) => {
     }
   };
 
-  const getStatusColor = (status: string) => {
+  // COLOR LOGIC: Dark Teal Backgrounds with colored borders
+  const getStatusStyle = (status: string) => {
     switch (status) {
-      case 'done': return 'border-l-green-500 bg-green-50/50';
-      case 'in_progress': return 'border-l-yellow-500 bg-yellow-50/50';
-      default: return 'border-l-slate-500 bg-white';
+      case 'done': return 'border-l-green-500/50 bg-[#013333]/80';
+      case 'in_progress': return 'border-l-yellow-500/50 bg-[#013333]/80';
+      default: return 'border-l-slate-500/50 bg-[#013333]/80';
     }
   };
 
   return (
     <>
-      <Card className={`hover:shadow-md transition-all duration-300 border-l-4 ${getStatusColor(task.status)}`}>
-        <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
+      <Card className={`hover:shadow-lg transition-all duration-300 border border-[#14B8A6]/30 border-l-[6px] ${getStatusStyle(task.status)} group`}>
+        <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2 p-3">
           <div className="space-y-1 w-full mr-2">
-            <CardTitle className="text-base font-semibold text-slate-800">
+            <CardTitle className="text-base font-bold text-[#5EEAD4] leading-tight">
               {task.title}
             </CardTitle>
-            <CardDescription className="text-xs line-clamp-2">
+            <CardDescription className="text-xs text-[#94A3B8] line-clamp-2 font-medium">
               {task.description}
             </CardDescription>
           </div>
           
-          {/* ACTION BUTTONS GROUP */}
-          <div className="flex items-center gap-1 -mr-2 -mt-1">
-            {/* EDIT BUTTON */}
+          <div className="flex items-center gap-1 -mr-1">
             <Button 
               variant="ghost" 
               size="icon" 
-              className="h-7 w-7 text-slate-400 hover:text-blue-600 hover:bg-blue-50"
+              className="h-7 w-7 text-[#14B8A6] hover:text-[#5EEAD4] hover:bg-[#14B8A6]/20"
               onClick={() => setIsEditOpen(true)}
             >
               <Pencil className="h-3.5 w-3.5" />
             </Button>
 
-            {/* DELETE BUTTON */}
             <Button 
               variant="ghost" 
               size="icon" 
-              className="h-7 w-7 text-slate-400 hover:text-red-600 hover:bg-red-50"
+              className="h-7 w-7 text-slate-500 hover:text-red-400 hover:bg-red-900/20"
               onClick={handleDelete}
             >
               <Trash2 className="h-3.5 w-3.5" />
@@ -80,27 +87,32 @@ export const TaskCard = ({ task }: TaskCardProps) => {
           </div>
         </CardHeader>
 
-        <CardContent className="space-y-3 pt-2">
-          {/* Details */}
-          <div className="flex items-center justify-between text-xs text-slate-500">
-            <div className="flex items-center gap-1.5">
-              <User className="h-3.5 w-3.5" />
-              <span className="font-medium">{task.assigned_to_name || 'Unassigned'}</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <CalendarDays className="h-3.5 w-3.5" />
-              <span>{new Date(task.created_at).toLocaleDateString()}</span>
+        <CardContent className="space-y-3 pt-0 p-3">
+          <div className="flex flex-col gap-2 text-xs text-[#94A3B8] font-medium">
+            <div className="flex justify-between items-center bg-[#014D4D]/50 p-1.5 rounded border border-[#14B8A6]/20">
+                <div className="flex items-center gap-1.5">
+                    <User className="h-3.5 w-3.5 text-[#14B8A6]" />
+                    <span>{task.assigned_to_name || 'Unassigned'}</span>
+                </div>
+                
+                {task.due_date && (
+                    <div className={`flex items-center gap-1.5 font-bold ${
+                      isOverdue ? 'text-red-400' : isDueToday ? 'text-orange-400' : 'text-[#14B8A6]'
+                    }`}>
+                        <Clock className="h-3.5 w-3.5" />
+                        <span>{formatKenyanDate(task.due_date)}</span>
+                    </div>
+                )}
             </div>
           </div>
 
-          {/* Workflow Arrows */}
           <div className="flex items-center justify-between gap-2 pt-1">
             <Button
               size="sm"
               variant="outline"
               onClick={() => handleMove('left')}
               disabled={!canMoveLeft}
-              className="flex-1 h-8 bg-white hover:bg-slate-100 border-slate-200"
+              className="flex-1 h-8 bg-transparent border-[#14B8A6]/30 text-[#5EEAD4] hover:bg-[#14B8A6]/10 hover:text-[#5EEAD4] disabled:opacity-30 disabled:hover:bg-transparent"
             >
               <ChevronLeft className="w-4 h-4 mr-1" />
               Prev
@@ -111,7 +123,7 @@ export const TaskCard = ({ task }: TaskCardProps) => {
               variant="outline"
               onClick={() => handleMove('right')}
               disabled={!canMoveRight}
-              className="flex-1 h-8 bg-white hover:bg-slate-100 border-slate-200"
+              className="flex-1 h-8 bg-transparent border-[#14B8A6]/30 text-[#5EEAD4] hover:bg-[#14B8A6]/10 hover:text-[#5EEAD4] disabled:opacity-30 disabled:hover:bg-transparent"
             >
               Next
               <ChevronRight className="w-4 h-4 ml-1" />
@@ -120,7 +132,6 @@ export const TaskCard = ({ task }: TaskCardProps) => {
         </CardContent>
       </Card>
 
-      {/* RENDER MODAL HERE */}
       <EditTaskModal 
         open={isEditOpen} 
         onOpenChange={setIsEditOpen} 

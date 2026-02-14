@@ -5,12 +5,13 @@ import {
   onAuthStateChanged, 
   User as FirebaseUser 
 } from 'firebase/auth';
-import { auth } from '@/lib/firebase';
-import { toast } from '@/hooks/use-toast';
+import { doc, getDoc } from 'firebase/firestore';
+import { auth, db } from '@/lib/firebase';
+import { toast } from 'sonner';
 
-type Role = 'admin' | 'farm_technician';
+// Define the roles clearly
+type Role = 'admin' | 'supervisor' | 'farm_technician';
 
-// Your App's User Interface
 interface User {
   id: string;
   name: string;
@@ -33,17 +34,36 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // This listener fires whenever the login state changes (login, logout, refresh)
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+    // 1. Listen for Firebase Auth changes (Login/Logout/Refresh)
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
-        // Map Firebase user to your App's User structure
-        setUser({
-          id: firebaseUser.uid,
-          name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
-          email: firebaseUser.email || '',
-          // Simple rule for MVP: specific email gets admin, others get technician
-          role: firebaseUser.email === 'admin@aquagen.com' ? 'admin' : 'farm_technician'
-        });
+        try {
+          // 2. Fetch the "User Profile" from Firestore to get the Role
+          const userDocRef = doc(db, "users", firebaseUser.uid);
+          const userDoc = await getDoc(userDocRef);
+
+          if (userDoc.exists()) {
+            const userData = userDoc.data();
+            setUser({
+              id: firebaseUser.uid,
+              name: userData.name || firebaseUser.email?.split('@')[0] || 'User',
+              email: firebaseUser.email || '',
+              // Default to technician if the database field is missing
+              role: userData.role || 'farm_technician' 
+            });
+          } else {
+            // Fallback: If they logged in but have no database entry yet
+            setUser({
+              id: firebaseUser.uid,
+              name: firebaseUser.email?.split('@')[0] || 'User',
+              email: firebaseUser.email || '',
+              role: 'farm_technician'
+            });
+          }
+        } catch (error) {
+          console.error("Error fetching user role:", error);
+          toast.error("Failed to load user permissions.");
+        }
       } else {
         setUser(null);
       }
@@ -56,15 +76,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const login = async (email: string, password: string): Promise<boolean> => {
     try {
       await signInWithEmailAndPassword(auth, email, password);
-      // We don't need to setUser here; the onAuthStateChanged listener handles it
+      // We don't need to manually setUser; the listener above handles it.
       return true;
     } catch (error: any) {
       console.error("Login failed:", error);
-      toast({
-        title: "Login Failed",
-        description: "Invalid email or password.",
-        variant: "destructive",
-      });
+      toast.error("Invalid email or password.");
       return false;
     }
   };
@@ -72,7 +88,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const logout = async () => {
     try {
       await signOut(auth);
-      // Listener handles state update
+      toast.success("Logged out successfully");
     } catch (error) {
       console.error("Logout failed:", error);
     }
