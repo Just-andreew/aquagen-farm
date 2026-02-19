@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { DataProvider } from "./contexts/DataContext";
+import { SignUpPage } from "@/components/SignUpPage";
 import { LoginPage } from "./components/LoginPage";
 import { Layout } from "./components/Layout";
 import Dashboard from "./pages/Dashboard";
@@ -43,6 +44,7 @@ const App = () => (
           <Sonner />
           <BrowserRouter>
             <Routes>
+              <Route path="/signup" element={<SignUpPage />} />
               <Route path="/" element={<LoginPage />} />
               <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
               <Route path="/tasks" element={<ProtectedRoute><Tasks /></ProtectedRoute>} />
