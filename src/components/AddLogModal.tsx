@@ -5,7 +5,7 @@ import {
   DialogHeader, 
   DialogTitle, 
   DialogFooter,
-  DialogDescription // <--- Added this import
+  DialogDescription 
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,7 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useData } from '@/contexts/DataContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, Camera } from 'lucide-react';
 
 interface AddLogModalProps {
   open: boolean;
@@ -34,6 +34,10 @@ export const AddLogModal = ({ open, onOpenChange }: AddLogModalProps) => {
   // Feeding Specific State
   const [selectedFeedId, setSelectedFeedId] = useState('');
   const [feedAmount, setFeedAmount] = useState('');
+
+  // Weight Specific State
+  const [weightValue, setWeightValue] = useState('');
+  const [weightUnit, setWeightUnit] = useState<'kg' | 'g'>('kg');
   
   // Image State
   const [isProcessing, setIsProcessing] = useState(false);
@@ -80,10 +84,15 @@ export const AddLogModal = ({ open, onOpenChange }: AddLogModalProps) => {
       }
     }
 
+    // Weight Validation
+    if (eventType === 'Weight Measurement' && !weightValue) {
+      toast.error('Please enter the weight value.');
+      return;
+    }
+
     try {
       setIsProcessing(true);
       
-      // FIX 1: Initialize as null (safe for Firestore) or string, but never undefined
       let finalFileUrl: string | null = null; 
 
       // 1. Process Image
@@ -101,15 +110,20 @@ export const AddLogModal = ({ open, onOpenChange }: AddLogModalProps) => {
          }
       }
 
-      // FIX 2: Construct data object safely without undefined values
+      // 3. Construct data object safely
       const logData: any = { description };
+      
       if (eventType === 'Feeding') {
         logData.feed_used = selectedFeedId;
         logData.feed_amount = feedAmount;
+      } else if (eventType === 'Weight Measurement') {
+        const rawNumber = parseFloat(weightValue);
+        // Standardize to KG for the database math
+        logData.weight_kg = weightUnit === 'g' ? (rawNumber / 1000).toString() : rawNumber.toString();
+        logData.original_input = `${weightValue}${weightUnit}`; // Keep what Peter actually typed
       }
 
-      // 3. Save Log
-      // We use conditional spreading to avoid passing 'undefined' keys
+      // 4. Save Log
       await addLog({
         technician_id: user?.id || '',
         technician_name: user?.name || '',
@@ -119,9 +133,7 @@ export const AddLogModal = ({ open, onOpenChange }: AddLogModalProps) => {
         ...(finalFileUrl ? { attached_file_url: finalFileUrl } : {}),
       });
 
-      toast.success(eventType === 'Feeding' 
-        ? 'Feeding logged and inventory updated.' 
-        : 'Log entry added successfully');
+      toast.success('Log entry added successfully');
 
       // Reset
       setAnimalType('');
@@ -129,6 +141,8 @@ export const AddLogModal = ({ open, onOpenChange }: AddLogModalProps) => {
       setDescription('');
       setSelectedFeedId('');
       setFeedAmount('');
+      setWeightValue('');
+      setWeightUnit('kg');
       setSelectedFile(null);
       onOpenChange(false);
 
@@ -145,14 +159,12 @@ export const AddLogModal = ({ open, onOpenChange }: AddLogModalProps) => {
       <DialogContent className="bg-[#013333] border-[#14B8A6] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-[#5EEAD4]">Add Log Entry</DialogTitle>
-          {/* FIX 3: Added Description to fix console warning */}
           <DialogDescription className="text-slate-400">
             Fill in the details below to record a new farm event.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           
-          {/* Row 1: Animal & Event */}
           <div className="grid grid-cols-2 gap-4">
             <div>
                 <Label className="text-[#5EEAD4]">Animal Type *</Label>
@@ -178,6 +190,7 @@ export const AddLogModal = ({ open, onOpenChange }: AddLogModalProps) => {
                 </SelectTrigger>
                 <SelectContent className="bg-[#014D4D] border-[#14B8A6]">
                     <SelectItem value="Feeding">Feeding</SelectItem>
+                    <SelectItem value="Weight Measurement">Weight Measurement</SelectItem>
                     <SelectItem value="Water Test">Water Test</SelectItem>
                     <SelectItem value="Maintenance">Maintenance</SelectItem>
                     <SelectItem value="Health Check">Health Check</SelectItem>
@@ -233,6 +246,40 @@ export const AddLogModal = ({ open, onOpenChange }: AddLogModalProps) => {
              </div>
           )}
 
+          {/* DYNAMIC SECTION: Weight Measurement */}
+          {eventType === 'Weight Measurement' && (
+            <div className="p-4 bg-[#014D4D]/50 rounded-lg border border-[#14B8A6]/30 space-y-3">
+              <Label className="text-[#5EEAD4]">Sample Weight</Label>
+              <div className="flex gap-2">
+                <Input
+                  type="number"
+                  step="0.01"
+                  placeholder="Enter amount..."
+                  value={weightValue}
+                  onChange={(e) => setWeightValue(e.target.value)}
+                  className="bg-[#013333] border-[#14B8A6] text-[#5EEAD4] flex-1"
+                />
+                <div className="flex bg-[#013333] border border-[#14B8A6]/30 rounded-md p-1">
+                  <button
+                    type="button"
+                    onClick={() => setWeightUnit('kg')}
+                    className={`px-3 py-1 rounded text-xs font-bold transition-all ${weightUnit === 'kg' ? 'bg-[#14B8A6] text-[#013333]' : 'text-[#94A3B8]'}`}
+                  >
+                    KG
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setWeightUnit('g')}
+                    className={`px-3 py-1 rounded text-xs font-bold transition-all ${weightUnit === 'g' ? 'bg-[#14B8A6] text-[#013333]' : 'text-[#94A3B8]'}`}
+                  >
+                    G
+                  </button>
+                </div>
+              </div>
+              <p className="text-xs text-[#14B8A6]/70 italic">Grams are automatically converted to KG for FCR calculations.</p>
+            </div>
+          )}
+
           <div>
             <Label className="text-[#5EEAD4]">Description *</Label>
             <Textarea
@@ -245,22 +292,25 @@ export const AddLogModal = ({ open, onOpenChange }: AddLogModalProps) => {
           </div>
 
           <div>
-            <Label className="text-[#5EEAD4]">Attach Photo</Label>
-            <Input
-              type="file"
-              accept="image/*"
-              onChange={(e) => {
-                if (e.target.files && e.target.files[0]) setSelectedFile(e.target.files[0]);
-              }}
-              className="bg-[#014D4D] border-[#14B8A6] text-[#5EEAD4] file:bg-[#14B8A6] file:text-white"
-            />
+            <Label className="text-[#5EEAD4] flex items-center gap-2"><Camera className="w-4 h-4"/> Attach Photo (Point & Shoot)</Label>
+            <div className="relative mt-2">
+              <Input
+                type="file"
+                accept="image/*"
+                capture="environment" /* <--- Instantly opens rear camera on mobile */
+                onChange={(e) => {
+                  if (e.target.files && e.target.files[0]) setSelectedFile(e.target.files[0]);
+                }}
+                className="bg-[#014D4D] border-[#14B8A6] text-[#5EEAD4] file:bg-[#14B8A6] file:text-[#013333] file:font-bold file:border-0 file:mr-4 file:px-4 file:py-2 file:rounded hover:file:bg-[#14B8A6]/80 cursor-pointer"
+              />
+            </div>
           </div>
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isProcessing}>
               Cancel
             </Button>
-            <Button type="submit" className="bg-[#14B8A6] hover:bg-[#14B8A6]/80 text-white" disabled={isProcessing}>
+            <Button type="submit" className="bg-[#14B8A6] hover:bg-[#14B8A6]/80 text-[#013333] font-bold" disabled={isProcessing}>
               {isProcessing ? "Saving..." : "Save Log"}
             </Button>
           </DialogFooter>

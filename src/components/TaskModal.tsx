@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { toast } from 'sonner';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { Briefcase } from 'lucide-react'; // <--- Added Briefcase import
 
 interface TaskModalProps {
   open: boolean;
@@ -155,22 +156,30 @@ export const TaskModal = ({ open, onOpenChange, defaultAssignee, defaultValues }
           </div>
 
           <div className="grid grid-cols-2 gap-4">
+            {/* THE FIX: Conditional Assign To Block */}
             <div className="space-y-2">
               <Label htmlFor="assignedTo">Assign To</Label>
-              <Select 
-                value={assignedTo} 
-                onValueChange={setAssignedTo} 
-                disabled={(!canAssignOthers && !defaultAssignee) || isLoadingUsers} 
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableUsers.map((u) => (
-                    <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {canAssignOthers || defaultAssignee ? (
+                <Select 
+                  value={assignedTo} 
+                  onValueChange={setAssignedTo} 
+                  disabled={isLoadingUsers} 
+                >
+                  <SelectTrigger className="bg-[#014D4D] border-[#14B8A6]/30 text-white">
+                    <SelectValue placeholder="Select..." />
+                  </SelectTrigger>
+                  <SelectContent className="bg-[#014D4D] border-[#14B8A6]">
+                    {availableUsers.map((u) => (
+                      <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <div className="flex items-center h-10 px-3 rounded-md bg-[#013333] border border-[#14B8A6]/20 text-[#5EEAD4] text-sm font-medium">
+                  <Briefcase className="h-4 w-4 mr-2 opacity-70" />
+                  Assigning to: Myself
+                </div>
+              )}
             </div>
 
             <div className="space-y-2">
