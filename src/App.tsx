@@ -1,67 +1,126 @@
-import { Toaster } from "@/components/ui/toaster";
-import { Toaster as Sonner } from "@/components/ui/sonner";
-import { TooltipProvider } from "@/components/ui/tooltip";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import { AuthProvider, useAuth } from "./contexts/AuthContext";
-import { DataProvider } from "./contexts/DataContext";
-import { SignUpPage } from "@/components/SignUpPage";
-import { LoginPage } from "./components/LoginPage";
-import { Layout } from "./components/Layout";
-import Dashboard from "./pages/Dashboard";
-import Tasks from "./pages/Tasks";
-import Logs from "./pages/Logs";
-import Inventory from "./pages/Inventory";
-import AdminDashboard from "./pages/admin/AdminDashboard";
-import Management from "./pages/admin/Management";
-import AdminLogs from "./pages/admin/AdminLogs";
-import AdminInventory from "./pages/admin/AdminInventory";
-import Reports from "./pages/admin/Reports";
-import NotFound from "./pages/NotFound";
+import { Suspense, lazy } from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from 'react-router-dom';
+import { AuthProvider, useAuth } from '@/contexts/AuthContext';
+import { DataProvider } from '@/contexts/DataContext';
+import { Toaster } from 'sonner';
 
-const queryClient = new QueryClient();
+// --- 1. EAGER IMPORTS (Crucial for initial load) ---
+// We import the Layout and Auth pages directly so the user isn't staring at a blank screen while trying to log in.
+import { Layout } from '@/components/Layout';
+import { LoginPage } from '@/components/LoginPage';
+import { SignUpPage } from '@/components/SignUpPage';
 
-const ProtectedRoute = ({ children, allowedRoles }: { children: React.ReactNode; allowedRoles?: string[] }) => {
-  const { isAuthenticated, user } = useAuth();
-  
+// --- 2. LAZY IMPORTS (Code Splitting) ---
+// These pages are only downloaded when the user actually navigates to them.
+const Dashboard = lazy(() => import('@/pages/Dashboard'));
+const Tasks = lazy(() => import('@/pages/Tasks'));
+const Logs = lazy(() => import('@/pages/Logs'));
+const Inventory = lazy(() => import('@/pages/Inventory'));
+const Management = lazy(() => import('@/pages/admin/Management'));
+const NotFound = lazy(() => import('@/pages/NotFound'));
+
+// --- 3. SECURITY GUARD ---
+// This wrapper ensures only logged-in users can access the dashboard routes.
+const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
+  const { isAuthenticated, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#013333] flex items-center justify-center text-[#14B8A6] font-bold">
+        Loading AquaGen...
+      </div>
+    );
+  }
+
   if (!isAuthenticated) {
-    return <Navigate to="/" />;
+    return <Navigate to="/login" replace />;
   }
-  
-  if (allowedRoles && user && !allowedRoles.includes(user.role)) {
-    return <Navigate to="/dashboard" />;
-  }
-  
-  return <Layout>{children}</Layout>;
+
+  return <>{children}</>;
 };
 
-const App = () => (
-  <QueryClientProvider client={queryClient}>
+// --- 4. MAIN APP COMPONENT ---
+function App() {
+  return (
     <AuthProvider>
       <DataProvider>
-        <TooltipProvider>
-          <Toaster />
-          <Sonner />
-          <BrowserRouter>
-            <Routes>
-              <Route path="/signup" element={<SignUpPage />} />
-              <Route path="/" element={<LoginPage />} />
-              <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-              <Route path="/tasks" element={<ProtectedRoute><Tasks /></ProtectedRoute>} />
-              <Route path="/logs" element={<ProtectedRoute><Logs /></ProtectedRoute>} />
-              <Route path="/inventory" element={<ProtectedRoute><Inventory /></ProtectedRoute>} />
-              <Route path="/admin" element={<ProtectedRoute allowedRoles={['admin']}><AdminDashboard /></ProtectedRoute>} />
-              <Route path="/admin/management" element={<ProtectedRoute allowedRoles={['admin']}><Management /></ProtectedRoute>} />
-              <Route path="/admin/logs" element={<ProtectedRoute allowedRoles={['admin']}><AdminLogs /></ProtectedRoute>} />
-              <Route path="/admin/inventory" element={<ProtectedRoute allowedRoles={['admin']}><AdminInventory /></ProtectedRoute>} />
-              <Route path="/admin/reports" element={<ProtectedRoute allowedRoles={['admin']}><Reports /></ProtectedRoute>} />
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </BrowserRouter>
-        </TooltipProvider>
+        <Router>
+          {/* Notifications component */}
+          <Toaster position="top-center" richColors theme="dark" />
+          
+          <Routes>
+            {/* --- PUBLIC ROUTES --- */}
+            <Route path="/" element={<Navigate to="/dashboard" replace />} />
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/signup" element={<SignUpPage />} />
+
+            {/* --- PROTECTED ROUTES --- */}
+            <Route
+              element={
+                <ProtectedRoute>
+                  <Layout>
+                    <Outlet />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            >
+              {/* Suspense boundary catches the lazy-loaded pages and shows a fallback while they download */}
+              <Route
+                path="/dashboard"
+                element={
+                  <Suspense fallback={<div className="p-8 text-center text-[#14B8A6]">Loading Dashboard...</div>}>
+                    <Dashboard />
+                  </Suspense>
+                }
+              />
+              <Route
+                path="/tasks"
+                element={
+                  <Suspense fallback={<div className="p-8 text-center text-[#14B8A6]">Loading Tasks...</div>}>
+                    <Tasks />
+                  </Suspense>
+                }
+              />
+              <Route
+                path="/logs"
+                element={
+                  <Suspense fallback={<div className="p-8 text-center text-[#14B8A6]">Loading Logs...</div>}>
+                    <Logs />
+                  </Suspense>
+                }
+              />
+              <Route
+                path="/inventory"
+                element={
+                  <Suspense fallback={<div className="p-8 text-center text-[#14B8A6]">Loading Inventory...</div>}>
+                    <Inventory />
+                  </Suspense>
+                }
+              />
+              <Route
+                path="/management"
+                element={
+                  <Suspense fallback={<div className="p-8 text-center text-[#14B8A6]">Loading Management...</div>}>
+                    <Management />
+                  </Suspense>
+                }
+              />
+              
+              {/* Catch-all for protected 404s */}
+              <Route
+                path="*"
+                element={
+                  <Suspense fallback={<div className="p-8 text-center text-[#14B8A6]">Loading...</div>}>
+                    <NotFound />
+                  </Suspense>
+                }
+              />
+            </Route>
+          </Routes>
+        </Router>
       </DataProvider>
     </AuthProvider>
-  </QueryClientProvider>
-);
+  );
+}
 
 export default App;
