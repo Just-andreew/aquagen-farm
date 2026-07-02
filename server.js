@@ -3,14 +3,27 @@ const admin = require('firebase-admin');
 const bodyParser = require('body-parser');
 const cors = require('cors');
 
-// 1. Authenticate Firebase using Vercel Environment Variables
+// ============================================================================
+// 1. BULLETPROOF FIREBASE AUTHENTICATION (ENVIRONMENT VARIABLES)
+// ============================================================================
+let privateKey = process.env.FIREBASE_PRIVATE_KEY;
+
+if (privateKey) {
+    // Strip out any rogue wrapping quotes Vercel might have injected into the env
+    if (privateKey.startsWith('"') && privateKey.endsWith('"')) {
+        privateKey = privateKey.slice(1, -1);
+    }
+    // Convert literal escape \n sequences back into genuine cryptographic linebreaks
+    privateKey = privateKey.replace(/\\n/g, '\n');
+}
+
 const serviceAccount = {
     projectId: process.env.FIREBASE_PROJECT_ID,
     clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-    // Automatically restores raw line breaks into the private key string
-    privateKey: process.env.FIREBASE_PRIVATE_KEY ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n') : undefined,
+    privateKey: privateKey,
 };
 
+// Initialize Firebase Admin cleanly
 admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
 const db = admin.firestore();
 
@@ -183,5 +196,5 @@ if (process.env.NODE_ENV !== 'production') {
     app.listen(PORT, () => console.log(`🚀 AquaGen Server running locally on port ${PORT}`));
 }
 
-// Crucial hook parsing execution for Vercel's serverless pipeline mechanics
+// REQUIRED HOOK FOR VERCEL SERVERLESS RUNTIME MECHANICS
 module.exports = app;
