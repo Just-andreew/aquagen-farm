@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
-import { Menu, X, Home, ListTodo, FileText, Package, Users, BarChart, LogOut } from 'lucide-react';
+import { Menu, X, Home, ListTodo, FileText, Package, Users, BarChart, LogOut, DollarSign } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 
 interface LayoutProps {
@@ -23,6 +23,7 @@ export const Layout = ({ children }: LayoutProps) => {
   const adminLinks = [
     { to: '/admin', icon: Home, label: 'Dashboard' },
     { to: '/admin/management', icon: Users, label: 'Management' },
+    { to: '/admin/financials', icon: DollarSign, label: 'Financials' },
     { to: '/admin/logs', icon: FileText, label: 'Logs' },
     { to: '/admin/inventory', icon: Package, label: 'Inventory' },
     { to: '/admin/reports', icon: BarChart, label: 'Reports' },

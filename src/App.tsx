@@ -21,6 +21,7 @@ const AdminDashboard = lazy(() => import('@/pages/admin/AdminDashboard'));
 const AdminInventory = lazy(() => import('@/pages/admin/AdminInventory'));
 const AdminLogs = lazy(() => import('@/pages/admin/AdminLogs'));
 const Reports = lazy(() => import('@/pages/admin/Reports'));
+const Financials = lazy(() => import('@/pages/admin/Financials'));
 const NotFound = lazy(() => import('@/pages/NotFound'));
 
 // --- 3. SECURITY GUARD ---
@@ -114,6 +115,14 @@ function App() {
                 element={
                   <Suspense fallback={<div className="p-8 text-center text-[#14B8A6]">Loading Management...</div>}>
                     <Management />
+                  </Suspense>
+                }
+              />
+              <Route
+                path="/admin/financials"
+                element={
+                  <Suspense fallback={<div className="p-8 text-center text-[#14B8A6]">Loading Financials...</div>}>
+                    <Financials />
                   </Suspense>
                 }
               />
