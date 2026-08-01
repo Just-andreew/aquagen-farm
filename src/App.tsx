@@ -17,6 +17,10 @@ const Tasks = lazy(() => import('@/pages/Tasks'));
 const Logs = lazy(() => import('@/pages/Logs'));
 const Inventory = lazy(() => import('@/pages/Inventory'));
 const Management = lazy(() => import('@/pages/admin/Management'));
+const AdminDashboard = lazy(() => import('@/pages/admin/AdminDashboard'));
+const AdminInventory = lazy(() => import('@/pages/admin/AdminInventory'));
+const AdminLogs = lazy(() => import('@/pages/admin/AdminLogs'));
+const Reports = lazy(() => import('@/pages/admin/Reports'));
 const NotFound = lazy(() => import('@/pages/NotFound'));
 
 // --- 3. SECURITY GUARD ---
@@ -98,10 +102,42 @@ function App() {
                 }
               />
               <Route
-                path="/management"
+                path="/admin"
+                element={
+                  <Suspense fallback={<div className="p-8 text-center text-[#14B8A6]">Loading Admin Dashboard...</div>}>
+                    <AdminDashboard />
+                  </Suspense>
+                }
+              />
+              <Route
+                path="/admin/management"
                 element={
                   <Suspense fallback={<div className="p-8 text-center text-[#14B8A6]">Loading Management...</div>}>
                     <Management />
+                  </Suspense>
+                }
+              />
+              <Route
+                path="/admin/logs"
+                element={
+                  <Suspense fallback={<div className="p-8 text-center text-[#14B8A6]">Loading Admin Logs...</div>}>
+                    <AdminLogs />
+                  </Suspense>
+                }
+              />
+              <Route
+                path="/admin/inventory"
+                element={
+                  <Suspense fallback={<div className="p-8 text-center text-[#14B8A6]">Loading Admin Inventory...</div>}>
+                    <AdminInventory />
+                  </Suspense>
+                }
+              />
+              <Route
+                path="/admin/reports"
+                element={
+                  <Suspense fallback={<div className="p-8 text-center text-[#14B8A6]">Loading Reports...</div>}>
+                    <Reports />
                   </Suspense>
                 }
               />
