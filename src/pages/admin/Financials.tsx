@@ -4,7 +4,7 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '@/lib/firebase';
 import { createInvoiceTransaction } from '@/lib/firebase/transactions';
 import { useAuth } from '@/contexts/AuthContext';
-import { Switch } from '@/components/ui/switch';
+import { useAuth } from '@/contexts/AuthContext';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -41,7 +41,6 @@ const Financials = () => {
   // --- STATE: LEDGER ---
   const [ledgerData, setLedgerData] = useState<LedgerEntry[]>([]);
   const [loadingLedger, setLoadingLedger] = useState(true);
-  const [showDraftsOnly, setShowDraftsOnly] = useState(false);
 
   // --- STATE: VOID INVOICE MODAL ---
   const [voidInvoiceId, setVoidInvoiceId] = useState<string | null>(null);
@@ -238,9 +237,7 @@ const Financials = () => {
   };
 
   // --- RENDER HELPERS ---
-  const filteredLedger = showDraftsOnly 
-    ? ledgerData.filter(e => e.status === 'Draft' || e.status === 'Pending')
-    : ledgerData;
+  const validLedgerEntries = ledgerData.filter(e => e.status !== 'Draft');
 
   const getStatusBadge = (status: string) => {
     switch(status) {
@@ -265,6 +262,7 @@ const Financials = () => {
           <TabsTrigger value="ledger" className="data-[state=active]:bg-[#14B8A6] data-[state=active]:text-[#013333]">Ledger</TabsTrigger>
           <TabsTrigger value="sales" className="data-[state=active]:bg-[#14B8A6] data-[state=active]:text-[#013333]">Sales (AR)</TabsTrigger>
           <TabsTrigger value="purchases" className="data-[state=active]:bg-[#14B8A6] data-[state=active]:text-[#013333]">Purchases (AP)</TabsTrigger>
+          <TabsTrigger value="drafts" className="data-[state=active]:bg-[#14B8A6] data-[state=active]:text-[#013333]">Drafts</TabsTrigger>
         </TabsList>
 
         {/* --- TAB 1: LEDGER --- */}
@@ -283,12 +281,6 @@ const Financials = () => {
               <CardTitle className="text-[#5EEAD4] flex items-center gap-2"><FileText className="h-5 w-5"/> P&L Command Center</CardTitle>
               <CardDescription className="text-[#94A3B8]">High-level view of all income and expenses.</CardDescription>
             </CardHeader>
-            <div className="px-6 pb-2 flex justify-end">
-              <div className="flex items-center space-x-2">
-                <Switch id="drafts-only" checked={showDraftsOnly} onCheckedChange={setShowDraftsOnly} />
-                <Label htmlFor="drafts-only" className="text-slate-300">Show Pending Drafts Only</Label>
-              </div>
-            </div>
             <CardContent>
               {loadingLedger ? (
                 <div className="text-center py-8 text-[#14B8A6]">Loading ledger data...</div>
@@ -306,7 +298,7 @@ const Financials = () => {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {filteredLedger.map((entry) => (
+                      {validLedgerEntries.map((entry) => (
                         <TableRow key={entry.id} className="border-[#14B8A6]/10 hover:bg-[#14B8A6]/5">
                           <TableCell className="text-slate-300">{new Date(entry.date).toLocaleDateString()}</TableCell>
                           <TableCell className="text-slate-400 text-xs font-mono">{entry.invoice_id || 'N/A'}</TableCell>
@@ -321,16 +313,6 @@ const Financials = () => {
                             {entry.type === 'Income' ? '+' : '-'}{entry.amount.toLocaleString()}
                           </TableCell>
                           <TableCell className="text-right flex justify-end gap-2">
-                            {entry.status === 'Draft' && (
-                              <Button 
-                                variant="outline" 
-                                size="sm" 
-                                className="border-[#14B8A6]/30 text-[#14B8A6] hover:bg-[#14B8A6] hover:text-[#013333]"
-                                onClick={() => confirmApprove(entry.id, entry.type)}
-                              >
-                                Approve
-                              </Button>
-                            )}
                             {entry.type === 'Income' && (entry.status === 'Paid' || entry.status === 'Pending') && (
                               <Button 
                                 variant="outline" 
@@ -532,6 +514,104 @@ const Financials = () => {
               </Button>
             </CardFooter>
           </Card>
+        </TabsContent>
+
+        {/* --- TAB 4: DRAFTS --- */}
+        <TabsContent value="drafts" className="mt-6">
+          <Tabs defaultValue="purchases_drafts" className="w-full">
+            <TabsList className="bg-[#014D4D] border border-[#14B8A6]/30 mb-6">
+              <TabsTrigger value="sales_drafts" className="data-[state=active]:bg-[#5EEAD4] data-[state=active]:text-[#013333]">Sales Drafts</TabsTrigger>
+              <TabsTrigger value="purchases_drafts" className="data-[state=active]:bg-[#5EEAD4] data-[state=active]:text-[#013333]">Purchases Drafts</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="sales_drafts">
+              <Card className="bg-[#013333] border-[#14B8A6]/20">
+                <CardHeader>
+                  <CardTitle className="text-[#5EEAD4] flex items-center gap-2"><DollarSign className="h-5 w-5"/> Sales Drafts (AR)</CardTitle>
+                  <CardDescription className="text-[#94A3B8]">Pending sales invoices awaiting finalization.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="rounded-md border border-[#14B8A6]/20 overflow-hidden">
+                    <Table>
+                      <TableHeader className="bg-black/20">
+                        <TableRow className="border-[#14B8A6]/20 hover:bg-transparent">
+                          <TableHead className="text-[#14B8A6]">Date</TableHead>
+                          <TableHead className="text-[#14B8A6]">Category</TableHead>
+                          <TableHead className="text-[#14B8A6]">Status</TableHead>
+                          <TableHead className="text-[#14B8A6] text-right">Amount (KES)</TableHead>
+                          <TableHead className="text-[#14B8A6] text-right">Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {ledgerData.filter(e => e.type === 'Income' && e.status === 'Draft').map((entry) => (
+                          <TableRow key={entry.id} className="border-[#14B8A6]/10 hover:bg-[#14B8A6]/5">
+                            <TableCell className="text-slate-300">{new Date(entry.date).toLocaleDateString()}</TableCell>
+                            <TableCell className="text-slate-300">{entry.category}</TableCell>
+                            <TableCell>{getStatusBadge(entry.status)}</TableCell>
+                            <TableCell className="text-right font-bold text-emerald-400">+{entry.amount.toLocaleString()}</TableCell>
+                            <TableCell className="text-right flex justify-end gap-2">
+                              <Button variant="outline" size="sm" className="border-[#14B8A6]/30 text-[#14B8A6] hover:bg-[#14B8A6] hover:text-[#013333]" onClick={() => confirmApprove(entry.id, entry.type)}>
+                                Approve
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                        {ledgerData.filter(e => e.type === 'Income' && e.status === 'Draft').length === 0 && (
+                          <TableRow>
+                            <TableCell colSpan={5} className="text-center py-8 text-slate-500">No sales drafts found.</TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="purchases_drafts">
+              <Card className="bg-[#013333] border-[#14B8A6]/20">
+                <CardHeader>
+                  <CardTitle className="text-[#5EEAD4] flex items-center gap-2"><CreditCard className="h-5 w-5"/> Purchases Drafts (AP)</CardTitle>
+                  <CardDescription className="text-[#94A3B8]">Pending expenses awaiting approval.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="rounded-md border border-[#14B8A6]/20 overflow-hidden">
+                    <Table>
+                      <TableHeader className="bg-black/20">
+                        <TableRow className="border-[#14B8A6]/20 hover:bg-transparent">
+                          <TableHead className="text-[#14B8A6]">Date</TableHead>
+                          <TableHead className="text-[#14B8A6]">Category</TableHead>
+                          <TableHead className="text-[#14B8A6]">Status</TableHead>
+                          <TableHead className="text-[#14B8A6] text-right">Amount (KES)</TableHead>
+                          <TableHead className="text-[#14B8A6] text-right">Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {ledgerData.filter(e => e.type === 'Expense' && e.status === 'Draft').map((entry) => (
+                          <TableRow key={entry.id} className="border-[#14B8A6]/10 hover:bg-[#14B8A6]/5">
+                            <TableCell className="text-slate-300">{new Date(entry.date).toLocaleDateString()}</TableCell>
+                            <TableCell className="text-slate-300">{entry.category}</TableCell>
+                            <TableCell>{getStatusBadge(entry.status)}</TableCell>
+                            <TableCell className="text-right font-bold text-rose-400">-{entry.amount.toLocaleString()}</TableCell>
+                            <TableCell className="text-right flex justify-end gap-2">
+                              <Button variant="outline" size="sm" className="border-[#14B8A6]/30 text-[#14B8A6] hover:bg-[#14B8A6] hover:text-[#013333]" onClick={() => confirmApprove(entry.id, entry.type)}>
+                                Approve
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                        {ledgerData.filter(e => e.type === 'Expense' && e.status === 'Draft').length === 0 && (
+                          <TableRow>
+                            <TableCell colSpan={5} className="text-center py-8 text-slate-500">No purchases drafts found.</TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
         </TabsContent>
 
       </Tabs>
