@@ -86,11 +86,19 @@ const Financials = () => {
       
       salesSnap.forEach(doc => {
         const data = doc.data();
-        const rawStatus = (data.status || 'Paid').trim();
-        const finalStatus = rawStatus.toLowerCase() === 'draft' ? 'Draft' : rawStatus;
+        let finalStatus = 'Paid';
+        if (data.status) {
+          const rawStatus = String(data.status).trim();
+          finalStatus = rawStatus.toLowerCase() === 'draft' ? 'Draft' : rawStatus;
+        }
+        
+        let dateVal = new Date().toISOString();
+        if (data.date && typeof data.date === 'string') dateVal = data.date;
+        else if (data.created_at && typeof data.created_at === 'string') dateVal = data.created_at;
+
         entries.push({
           id: doc.id,
-          date: data.date || data.created_at || new Date().toISOString(),
+          date: dateVal,
           type: 'Income',
           category: data.category || (data.type === 'B2B' ? 'B2B Invoice' : 'General Sale'),
           amount: data.total || data.amount || 0,
@@ -102,11 +110,19 @@ const Financials = () => {
 
       expSnap.forEach(doc => {
         const data = doc.data();
-        const rawStatus = (data.status || 'Paid').trim();
-        const finalStatus = rawStatus.toLowerCase() === 'draft' ? 'Draft' : rawStatus;
+        let finalStatus = 'Paid';
+        if (data.status) {
+          const rawStatus = String(data.status).trim();
+          finalStatus = rawStatus.toLowerCase() === 'draft' ? 'Draft' : rawStatus;
+        }
+
+        let dateVal = new Date().toISOString();
+        if (data.date && typeof data.date === 'string') dateVal = data.date;
+        else if (data.created_at && typeof data.created_at === 'string') dateVal = data.created_at;
+
         entries.push({
           id: doc.id,
-          date: data.date || data.created_at || new Date().toISOString(),
+          date: dateVal,
           type: 'Expense',
           category: data.category || 'General Expense',
           amount: data.amount || 0,
