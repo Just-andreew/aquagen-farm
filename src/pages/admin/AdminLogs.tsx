@@ -4,12 +4,14 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { LogFilters } from '@/components/LogFilters';
 import { Download, CheckCircle, MessageSquare } from 'lucide-react';
 
 const AdminLogs = () => {
   const { logs } = useData();
   const [filteredLogs, setFilteredLogs] = useState(logs);
+  const [selectedLog, setSelectedLog] = useState<any>(null);
 
   const handleExport = () => {
     const csv = [
@@ -86,8 +88,8 @@ const AdminLogs = () => {
                       <Button size="sm" variant="outline" className="text-green-500 border-green-500">
                         <CheckCircle className="h-4 w-4" />
                       </Button>
-                      <Button size="sm" variant="outline" className="text-[#14B8A6] border-[#14B8A6]">
-                        <MessageSquare className="h-4 w-4" />
+                      <Button size="sm" variant="outline" className="text-[#14B8A6] border-[#14B8A6]" onClick={() => setSelectedLog(log)}>
+                        <MessageSquare className="h-4 w-4 mr-1" /> Details
                       </Button>
                     </div>
                   </TableCell>
@@ -100,6 +102,49 @@ const AdminLogs = () => {
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={!!selectedLog} onOpenChange={(open) => !open && setSelectedLog(null)}>
+        <DialogContent className="bg-[#013333] border-[#14B8A6]/30 text-slate-200 max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-[#5EEAD4]">Log Details</DialogTitle>
+            <DialogDescription className="text-[#94A3B8]">
+              Comprehensive view of AI deductions and raw data.
+            </DialogDescription>
+          </DialogHeader>
+          
+          {selectedLog && (
+            <div className="space-y-6 mt-4">
+              {/* AI Verification Note */}
+              <div className="space-y-2">
+                <h3 className="font-bold text-[#14B8A6]">AI Deductions & Comments</h3>
+                <div className="p-4 bg-[#014D4D] border border-[#14B8A6]/20 rounded-md text-sm text-emerald-100">
+                  {selectedLog.data?.notes || selectedLog.data?.description || "No AI comments provided."}
+                </div>
+              </div>
+
+              {/* Full AI Response */}
+              <div className="space-y-2">
+                <h3 className="font-bold text-[#14B8A6]">Full AI Data (JSON)</h3>
+                <div className="p-4 bg-black/40 border border-[#14B8A6]/20 rounded-md">
+                  <pre className="text-xs text-slate-300 overflow-x-auto whitespace-pre-wrap">
+                    {JSON.stringify(selectedLog.data, null, 2)}
+                  </pre>
+                </div>
+              </div>
+
+              {/* Original User Message */}
+              <div className="space-y-2">
+                <h3 className="font-bold text-[#14B8A6]">Original Logger Text</h3>
+                <div className="p-4 bg-[#014D4D] border border-[#14B8A6]/20 rounded-md text-sm text-slate-300 italic border-l-4 border-l-slate-500">
+                  {selectedLog.data?.original_text && selectedLog.data.original_text !== "[Visual Uploaded]" 
+                    ? `"${selectedLog.data.original_text}"` 
+                    : "No text provided (Visual Upload or System Generated)."}
+                </div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

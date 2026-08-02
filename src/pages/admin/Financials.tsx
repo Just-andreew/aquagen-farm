@@ -4,7 +4,6 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '@/lib/firebase';
 import { createInvoiceTransaction } from '@/lib/firebase/transactions';
 import { useAuth } from '@/contexts/AuthContext';
-import { useAuth } from '@/contexts/AuthContext';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -14,8 +13,9 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { Plus, Trash2, FileText, DollarSign, CreditCard, Building2, Receipt } from 'lucide-react';
+import { Plus, Trash2, FileText, DollarSign, CreditCard, Building2, Receipt, Edit2 } from 'lucide-react';
 
 // --- TYPES ---
 interface LedgerEntry {
@@ -45,6 +45,12 @@ const Financials = () => {
   // --- STATE: VOID INVOICE MODAL ---
   const [voidInvoiceId, setVoidInvoiceId] = useState<string | null>(null);
   const [isVoidModalOpen, setIsVoidModalOpen] = useState(false);
+
+  // --- STATE: EDIT DRAFT MODAL ---
+  const [editingDraft, setEditingDraft] = useState<LedgerEntry | null>(null);
+  const [editCategory, setEditCategory] = useState('');
+  const [editAmount, setEditAmount] = useState(0);
+  const [editDate, setEditDate] = useState('');
 
   // --- STATE: QUICK POS ---
   const [posCategory, setPosCategory] = useState('');
@@ -257,6 +263,43 @@ const Financials = () => {
     } catch (error: any) {
       console.error(error);
       toast.error("Failed to approve draft.");
+    }
+  };
+
+  const handleEditDraft = (draft: LedgerEntry) => {
+    setEditingDraft(draft);
+    setEditCategory(draft.category);
+    setEditAmount(draft.amount);
+    // Format date string for HTML input (YYYY-MM-DD)
+    try {
+      setEditDate(new Date(draft.date).toISOString().split('T')[0]);
+    } catch {
+      setEditDate('');
+    }
+  };
+
+  const confirmEditDraft = async () => {
+    if (!editingDraft) return;
+    try {
+      const collectionName = editingDraft.type === 'Expense' ? 'expenses' : 'sales';
+      
+      const payload: any = {
+        category: editCategory,
+        amount: editAmount,
+        date: editDate || new Date().toISOString()
+      };
+      // Keep total in sync for sales
+      if (editingDraft.type === 'Income') {
+        payload.total = editAmount;
+      }
+      
+      await updateDoc(doc(db, collectionName, editingDraft.id), payload);
+      toast.success("Draft updated successfully!");
+      setEditingDraft(null);
+      fetchLedger();
+    } catch (error: any) {
+      console.error(error);
+      toast.error("Failed to update draft.");
     }
   };
 
@@ -574,6 +617,9 @@ const Financials = () => {
                             <TableCell>{getStatusBadge(entry.status)}</TableCell>
                             <TableCell className="text-right font-bold text-emerald-400">+{entry.amount.toLocaleString()}</TableCell>
                             <TableCell className="text-right flex justify-end gap-2">
+                              <Button variant="outline" size="sm" className="border-[#14B8A6]/30 text-[#14B8A6] hover:bg-[#14B8A6]/10" onClick={() => handleEditDraft(entry)}>
+                                <Edit2 className="w-3 h-3 mr-1" /> Edit
+                              </Button>
                               <Button variant="outline" size="sm" className="border-[#14B8A6]/30 text-[#14B8A6] hover:bg-[#14B8A6] hover:text-[#013333]" onClick={() => confirmApprove(entry.id, entry.type)}>
                                 Approve
                               </Button>
@@ -618,6 +664,9 @@ const Financials = () => {
                             <TableCell>{getStatusBadge(entry.status)}</TableCell>
                             <TableCell className="text-right font-bold text-rose-400">-{entry.amount.toLocaleString()}</TableCell>
                             <TableCell className="text-right flex justify-end gap-2">
+                              <Button variant="outline" size="sm" className="border-[#14B8A6]/30 text-[#14B8A6] hover:bg-[#14B8A6]/10" onClick={() => handleEditDraft(entry)}>
+                                <Edit2 className="w-3 h-3 mr-1" /> Edit
+                              </Button>
                               <Button variant="outline" size="sm" className="border-[#14B8A6]/30 text-[#14B8A6] hover:bg-[#14B8A6] hover:text-[#013333]" onClick={() => confirmApprove(entry.id, entry.type)}>
                                 Approve
                               </Button>
@@ -657,6 +706,47 @@ const Financials = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* --- EDIT DRAFT MODAL --- */}
+      <Dialog open={!!editingDraft} onOpenChange={(open) => !open && setEditingDraft(null)}>
+        <DialogContent className="bg-[#013333] border-[#14B8A6]/30 text-slate-200">
+          <DialogHeader>
+            <DialogTitle className="text-[#5EEAD4]">Edit Draft</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label className="text-[#94A3B8]">Category / Description</Label>
+              <Input 
+                value={editCategory} 
+                onChange={(e) => setEditCategory(e.target.value)} 
+                className="bg-[#014D4D] border-[#14B8A6]/30 text-white" 
+              />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-[#94A3B8]">Amount (KES)</Label>
+              <Input 
+                type="number" 
+                value={editAmount} 
+                onChange={(e) => setEditAmount(Number(e.target.value))} 
+                className="bg-[#014D4D] border-[#14B8A6]/30 text-white" 
+              />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-[#94A3B8]">Date</Label>
+              <Input 
+                type="date" 
+                value={editDate} 
+                onChange={(e) => setEditDate(e.target.value)} 
+                className="bg-[#014D4D] border-[#14B8A6]/30 text-white" 
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" className="text-slate-400 hover:text-white" onClick={() => setEditingDraft(null)}>Cancel</Button>
+            <Button className="bg-[#14B8A6] text-[#013333] hover:bg-[#5EEAD4]" onClick={confirmEditDraft}>Save Changes</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
     </div>
   );
