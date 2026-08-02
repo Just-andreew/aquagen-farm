@@ -4,6 +4,7 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '@/lib/firebase';
 import { createInvoiceTransaction } from '@/lib/firebase/transactions';
 import { useAuth } from '@/contexts/AuthContext';
+import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -40,6 +41,7 @@ const Financials = () => {
   // --- STATE: LEDGER ---
   const [ledgerData, setLedgerData] = useState<LedgerEntry[]>([]);
   const [loadingLedger, setLoadingLedger] = useState(true);
+  const [showDraftsOnly, setShowDraftsOnly] = useState(false);
 
   // --- STATE: VOID INVOICE MODAL ---
   const [voidInvoiceId, setVoidInvoiceId] = useState<string | null>(null);
@@ -106,7 +108,7 @@ const Financials = () => {
           category: data.category || 'General Expense',
           amount: data.amount || 0,
           user_id: data.user_id || 'Unknown',
-          status: 'Paid'
+          status: data.status === 'draft' ? 'Draft' : (data.status || 'Paid')
         });
       });
 
@@ -223,7 +225,23 @@ const Financials = () => {
     }
   };
 
+  const confirmApprove = async (id: string, type: string) => {
+    try {
+      const collectionName = type === 'Expense' ? 'expenses' : 'sales';
+      await updateDoc(doc(db, collectionName, id), { status: 'Paid' });
+      toast.success("Draft approved successfully!");
+      fetchLedger();
+    } catch (error: any) {
+      console.error(error);
+      toast.error("Failed to approve draft.");
+    }
+  };
+
   // --- RENDER HELPERS ---
+  const filteredLedger = showDraftsOnly 
+    ? ledgerData.filter(e => e.status === 'Draft' || e.status === 'Pending')
+    : ledgerData;
+
   const getStatusBadge = (status: string) => {
     switch(status) {
       case 'Paid': return <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20">{status}</Badge>;
@@ -265,6 +283,12 @@ const Financials = () => {
               <CardTitle className="text-[#5EEAD4] flex items-center gap-2"><FileText className="h-5 w-5"/> P&L Command Center</CardTitle>
               <CardDescription className="text-[#94A3B8]">High-level view of all income and expenses.</CardDescription>
             </CardHeader>
+            <div className="px-6 pb-2 flex justify-end">
+              <div className="flex items-center space-x-2">
+                <Switch id="drafts-only" checked={showDraftsOnly} onCheckedChange={setShowDraftsOnly} />
+                <Label htmlFor="drafts-only" className="text-slate-300">Show Pending Drafts Only</Label>
+              </div>
+            </div>
             <CardContent>
               {loadingLedger ? (
                 <div className="text-center py-8 text-[#14B8A6]">Loading ledger data...</div>
@@ -282,7 +306,7 @@ const Financials = () => {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {ledgerData.map((entry) => (
+                      {filteredLedger.map((entry) => (
                         <TableRow key={entry.id} className="border-[#14B8A6]/10 hover:bg-[#14B8A6]/5">
                           <TableCell className="text-slate-300">{new Date(entry.date).toLocaleDateString()}</TableCell>
                           <TableCell className="text-slate-400 text-xs font-mono">{entry.invoice_id || 'N/A'}</TableCell>
@@ -296,7 +320,17 @@ const Financials = () => {
                           <TableCell className={`text-right font-bold ${entry.type === 'Income' && !['Void', 'Reversed'].includes(entry.status) ? 'text-emerald-400' : entry.type === 'Expense' ? 'text-rose-400' : 'text-slate-500 line-through'}`}>
                             {entry.type === 'Income' ? '+' : '-'}{entry.amount.toLocaleString()}
                           </TableCell>
-                          <TableCell className="text-right">
+                          <TableCell className="text-right flex justify-end gap-2">
+                            {entry.status === 'Draft' && (
+                              <Button 
+                                variant="outline" 
+                                size="sm" 
+                                className="border-[#14B8A6]/30 text-[#14B8A6] hover:bg-[#14B8A6] hover:text-[#013333]"
+                                onClick={() => confirmApprove(entry.id, entry.type)}
+                              >
+                                Approve
+                              </Button>
+                            )}
                             {entry.type === 'Income' && (entry.status === 'Paid' || entry.status === 'Pending') && (
                               <Button 
                                 variant="outline" 

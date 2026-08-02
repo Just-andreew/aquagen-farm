@@ -9,7 +9,7 @@ import { Shield, Link as LinkIcon } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Input } from '@/components/ui/input';
 
 interface StaffMember {
   id: string;
@@ -27,6 +27,7 @@ const BotAccess = () => {
   const [loading, setLoading] = useState(true);
   const [mergingUser, setMergingUser] = useState<StaffMember | null>(null);
   const [selectedTargetId, setSelectedTargetId] = useState<string>('');
+  const [searchQuery, setSearchQuery] = useState('');
 
   const fetchStaff = async () => {
     setLoading(true);
@@ -97,7 +98,11 @@ const BotAccess = () => {
     }
   };
 
-  const availableTargets = staff.filter(s => s.created_via !== 'telegram_auto_discovery');
+  const availableTargets = staff.filter(s => 
+    s.created_via !== 'telegram_auto_discovery' &&
+    (s.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+     s.email.toLowerCase().includes(searchQuery.toLowerCase()))
+  );
 
   return (
     <div className="space-y-6">
@@ -192,19 +197,32 @@ const BotAccess = () => {
             </DialogDescription>
           </DialogHeader>
           
-          <div className="py-4">
-            <Select value={selectedTargetId} onValueChange={setSelectedTargetId}>
-              <SelectTrigger className="w-full bg-[#014D4D] border-[#14B8A6]/30 text-slate-200">
-                <SelectValue placeholder="Select a web account..." />
-              </SelectTrigger>
-              <SelectContent className="bg-[#014D4D] border-[#14B8A6]/30 text-slate-200">
-                {availableTargets.map((t) => (
-                  <SelectItem key={t.id} value={t.id} className="hover:bg-[#14B8A6]/20 focus:bg-[#14B8A6]/20">
-                    {t.name} {t.email ? `(${t.email})` : ''}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className="py-4 space-y-4">
+            <Input 
+              placeholder="Search by name or email..." 
+              value={searchQuery} 
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="bg-[#014D4D] border-[#14B8A6]/30 text-slate-200 placeholder:text-slate-500"
+            />
+            <div className="max-h-[250px] overflow-y-auto space-y-1 pr-2 custom-scrollbar">
+              {availableTargets.map((t) => (
+                <div 
+                  key={t.id} 
+                  onClick={() => setSelectedTargetId(t.id)}
+                  className={`p-3 rounded-md cursor-pointer transition-colors border ${
+                    selectedTargetId === t.id 
+                      ? 'bg-[#14B8A6]/20 border-[#14B8A6] text-white' 
+                      : 'bg-[#014D4D]/50 border-transparent text-slate-300 hover:bg-[#14B8A6]/10 hover:border-[#14B8A6]/30'
+                  }`}
+                >
+                  <div className="font-medium">{t.name}</div>
+                  {t.email && <div className="text-xs opacity-70">{t.email}</div>}
+                </div>
+              ))}
+              {availableTargets.length === 0 && (
+                <div className="text-center text-slate-500 py-4 text-sm">No accounts found.</div>
+              )}
+            </div>
           </div>
 
           <DialogFooter>
