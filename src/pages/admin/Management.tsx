@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Shield, Users, UserCog, Pencil, Trash2, AlertCircle, Briefcase, Repeat, Play, Plus, Clock, CalendarClock } from 'lucide-react';
@@ -20,6 +21,7 @@ interface UserProfile {
   name: string;
   email: string;
   role: 'admin' | 'supervisor' | 'farm_technician';
+  created_via?: string;
 }
 
 interface Routine {
@@ -72,7 +74,7 @@ const Management = () => {
       const usersList: UserProfile[] = [];
       querySnapshot.forEach((doc) => {
         const data = doc.data();
-        usersList.push({ id: doc.id, name: data.name || 'Unknown', email: data.email || 'No Email', role: data.role || 'farm_technician' } as UserProfile);
+        usersList.push({ id: doc.id, name: data.name || 'Unknown', email: data.email || 'No Email', role: data.role || 'farm_technician', created_via: data.created_via } as UserProfile);
       });
       setUsers(usersList);
     } catch (error) { console.error(error); } finally { setLoading(false); }
@@ -194,27 +196,59 @@ const Management = () => {
       {activeTab === 'team' && (
         <Card className="bg-[#013333] border-[#14B8A6]/20">
             <CardHeader><CardTitle className="flex items-center gap-2 text-[#5EEAD4]"><UserCog className="h-5 w-5" /> Active Personnel</CardTitle></CardHeader>
-            <CardContent className="space-y-4">
-                {users.map((staff) => (
-                <div key={staff.id} className="flex flex-col md:flex-row md:items-center justify-between p-4 rounded-lg bg-black/20 border border-[#14B8A6]/10 hover:border-[#14B8A6]/30 transition-all gap-4">
-                    <div className="flex items-center gap-4">
-                        <div className="h-10 w-10 rounded-full bg-[#14B8A6]/10 flex items-center justify-center text-[#14B8A6] font-bold shrink-0">{staff.name.charAt(0).toUpperCase()}</div>
-                        <div>
-                            <h3 className="font-semibold text-white">{staff.name}</h3>
-                            <div className="flex items-center gap-2">
-                                <Badge variant="outline" className={`${getRoleBadgeColor(staff.role)} capitalize text-[10px]`}>{staff.role.replace('_', ' ')}</Badge>
-                                <span className="text-sm text-[#94A3B8] hidden sm:inline">{staff.email}</span>
+            <CardContent>
+              <div className="rounded-md border border-[#14B8A6]/20 overflow-hidden">
+                <Table>
+                  <TableHeader className="bg-black/20">
+                    <TableRow className="border-[#14B8A6]/20 hover:bg-transparent">
+                      <TableHead className="text-[#14B8A6]">Staff Member</TableHead>
+                      <TableHead className="text-[#14B8A6]">Role</TableHead>
+                      <TableHead className="text-[#14B8A6]">Origin</TableHead>
+                      <TableHead className="text-[#14B8A6] text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {users.map((staff) => (
+                      <TableRow key={staff.id} className="border-[#14B8A6]/10 hover:bg-[#14B8A6]/5">
+                        <TableCell>
+                          <div className="flex items-center gap-3">
+                            <div className="h-8 w-8 rounded-full bg-[#14B8A6]/10 flex items-center justify-center text-[#14B8A6] font-bold shrink-0">{staff.name.charAt(0).toUpperCase()}</div>
+                            <div>
+                              <div className="font-semibold text-white">{staff.name}</div>
+                              {staff.email && staff.email !== 'No Email' && <div className="text-xs text-slate-500">{staff.email}</div>}
                             </div>
-                        </div>
-                    </div>
-                    <div className="flex items-center gap-2 justify-end">
-                         <Button size="sm" className="bg-[#14B8A6]/10 text-[#5EEAD4] border border-[#14B8A6]/30 hover:bg-[#14B8A6] hover:text-[#013333]" onClick={() => handleAssignTaskToUser(staff.id)}>
-                            <Briefcase className="h-3.5 w-3.5 mr-1" /> Assign Task
-                        </Button>
-                        <Button variant="ghost" size="icon" className="text-slate-400 hover:text-white" onClick={() => handleEditUser(staff)}><Pencil className="h-4 w-4" /></Button>
-                    </div>
-                </div>
-                ))}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className={`${getRoleBadgeColor(staff.role)} capitalize text-[10px]`}>{staff.role.replace('_', ' ')}</Badge>
+                        </TableCell>
+                        <TableCell>
+                          {staff.created_via === 'telegram_auto_discovery' ? (
+                            <Badge variant="outline" className="bg-blue-500/10 text-blue-400 border-blue-500/20 text-[10px]">Telegram User</Badge>
+                          ) : (
+                            <Badge variant="outline" className="bg-slate-500/10 text-slate-400 border-slate-500/20 text-[10px]">System User</Badge>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <Button size="sm" className="bg-[#14B8A6]/10 text-[#5EEAD4] border border-[#14B8A6]/30 hover:bg-[#14B8A6] hover:text-[#013333] h-8" onClick={() => handleAssignTaskToUser(staff.id)}>
+                              <Briefcase className="h-3.5 w-3.5 mr-1" /> Assign Task
+                            </Button>
+                            <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-white" onClick={() => handleEditUser(staff)}>
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {users.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={4} className="text-center py-8 text-slate-500">No active personnel found.</TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
             </CardContent>
         </Card>
       )}

@@ -143,27 +143,59 @@ export default function Logs() {
                                 </div>
                             </div>
                             
-                            <p className="text-sm text-slate-300 mb-3">{log.data?.description}</p>
+                            {/* AI Verification Note */}
+                            {(log.data?.notes || log.data?.description) && (
+                                <p className="text-sm text-[#14B8A6] mb-2">
+                                    <span className="font-semibold">AI Verification: </span> 
+                                    {log.data.notes || log.data.description}
+                                </p>
+                            )}
+
+                            {/* Original User Message */}
+                            {log.data?.original_text && log.data.original_text !== "[Visual Uploaded]" && (
+                                <p className="text-sm text-slate-300 mb-3 italic border-l-2 border-slate-600 pl-2">
+                                    "{log.data.original_text}"
+                                </p>
+                            )}
                             
                             {/* Data Tags */}
                             <div className="flex flex-wrap gap-2 mt-2">
                                 <Badge variant="outline" className="text-[10px] bg-[#14B8A6]/5 border-[#14B8A6]/20 text-[#5EEAD4]">{log.animal_type}</Badge>
                                 
-                                {/* New Location Badge based on multi-select Ponds */}
+                                {/* Location Badge based on multi-select Ponds */}
                                 {log.data?.ponds && log.data.ponds.length > 0 && (
                                     <Badge variant="outline" className="text-[10px] bg-emerald-900/20 border-emerald-500/30 text-emerald-300">
                                         Loc: {log.data.ponds.join(', ')}
                                     </Badge>
                                 )}
                                 
-                                {log.data?.weight_kg && (
+                                {/* Weight */}
+                                {(log.data?.weight_kg || log.data?.metrics?.average_weight_g) && (
                                     <Badge variant="outline" className="text-[10px] bg-purple-900/20 border-purple-500/30 text-purple-300">
-                                        Weight: {log.data.original_input || `${log.data.weight_kg} kg`}
+                                        Weight: {log.data.weight_kg ? `${log.data.weight_kg} kg` : `${log.data.metrics.average_weight_g} g`}
                                     </Badge>
                                 )}
-                                {log.data?.feed_amount && (
+                                
+                                {/* Feed Amount */}
+                                {(log.data?.feed_amount || log.data?.metrics?.feed_amount) && (
                                     <Badge variant="outline" className="text-[10px] bg-blue-900/20 border-blue-500/30 text-blue-300">
-                                        Fed: {log.data.feed_amount}
+                                        Fed: {log.data.feed_amount || log.data.metrics.feed_amount}
+                                    </Badge>
+                                )}
+
+                                {/* Mortality Count */}
+                                {log.data?.metrics?.mortality_count && (
+                                    <Badge variant="outline" className="text-[10px] bg-red-900/20 border-red-500/30 text-red-300">
+                                        Mortality: {log.data.metrics.mortality_count}
+                                    </Badge>
+                                )}
+
+                                {/* Water Parameters */}
+                                {log.data?.metrics?.water_parameters && (
+                                    <Badge variant="outline" className="text-[10px] bg-cyan-900/20 border-cyan-500/30 text-cyan-300">
+                                        Water: {typeof log.data.metrics.water_parameters === 'string' 
+                                            ? log.data.metrics.water_parameters 
+                                            : JSON.stringify(log.data.metrics.water_parameters)}
                                     </Badge>
                                 )}
                             </div>
