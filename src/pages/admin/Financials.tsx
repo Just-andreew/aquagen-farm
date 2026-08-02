@@ -86,33 +86,41 @@ const Financials = () => {
       
       salesSnap.forEach(doc => {
         const data = doc.data();
+        const rawStatus = (data.status || 'Paid').trim();
+        const finalStatus = rawStatus.toLowerCase() === 'draft' ? 'Draft' : rawStatus;
         entries.push({
           id: doc.id,
-          date: data.date || data.created_at,
+          date: data.date || data.created_at || new Date().toISOString(),
           type: 'Income',
           category: data.category || (data.type === 'B2B' ? 'B2B Invoice' : 'General Sale'),
           amount: data.total || data.amount || 0,
           user_id: data.user_id || 'Unknown',
-          status: data.status || 'Paid',
+          status: finalStatus,
           invoice_id: data.invoice_id
         });
       });
 
       expSnap.forEach(doc => {
         const data = doc.data();
+        const rawStatus = (data.status || 'Paid').trim();
+        const finalStatus = rawStatus.toLowerCase() === 'draft' ? 'Draft' : rawStatus;
         entries.push({
           id: doc.id,
-          date: data.date || data.created_at,
+          date: data.date || data.created_at || new Date().toISOString(),
           type: 'Expense',
           category: data.category || 'General Expense',
           amount: data.amount || 0,
           user_id: data.user_id || 'Unknown',
-          status: data.status === 'draft' ? 'Draft' : (data.status || 'Paid')
+          status: finalStatus
         });
       });
 
       // Sort by date descending
-      entries.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      entries.sort((a, b) => {
+        const timeA = new Date(a.date).getTime();
+        const timeB = new Date(b.date).getTime();
+        return (isNaN(timeB) ? 0 : timeB) - (isNaN(timeA) ? 0 : timeA);
+      });
       setLedgerData(entries);
     } catch (error) {
       console.error("Error fetching ledger:", error);
