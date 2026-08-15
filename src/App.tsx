@@ -27,6 +27,13 @@ const NotFound = lazy(() => import('@/pages/NotFound'));
 
 // --- 3. SECURITY GUARD ---
 // This wrapper ensures only logged-in users can access the dashboard routes.
+const RootRedirect = () => {
+  const { user, loading } = useAuth();
+  if (loading) return null;
+  if (user?.role === "admin" || user?.role === "super-admin") return <Navigate to="/admin" replace />;
+  return <Navigate to="/dashboard" replace />;
+};
+
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { isAuthenticated, loading } = useAuth();
 
@@ -56,7 +63,7 @@ function App() {
           
           <Routes>
             {/* --- PUBLIC ROUTES --- */}
-            <Route path="/" element={<Navigate to="/dashboard" replace />} />
+            <Route path="/" element={<RootRedirect />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/signup" element={<SignUpPage />} />
 
