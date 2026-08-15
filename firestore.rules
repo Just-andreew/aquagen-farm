@@ -20,7 +20,8 @@ service cloud.firestore {
 
     match /counters/{counterId} {
       allow read, update: if isAdmin();
-      allow create, delete: if false; 
+      allow create: if isAdmin();
+      allow delete: if false; 
     }
 
     match /sales/{saleId} {
