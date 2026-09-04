@@ -27,6 +27,8 @@ interface LedgerEntry {
   user_id: string;
   status: string;
   invoice_id?: string;
+  description?: string;
+  client_name?: string;
 }
 
 interface LineItem {
@@ -51,6 +53,8 @@ const Financials = () => {
   const [editCategory, setEditCategory] = useState('');
   const [editAmount, setEditAmount] = useState(0);
   const [editDate, setEditDate] = useState('');
+  const [editDesc, setEditDesc] = useState('');
+  const [editClient, setEditClient] = useState('');
 
   // --- STATE: QUICK POS ---
   const [posCategory, setPosCategory] = useState('');
@@ -110,7 +114,9 @@ const Financials = () => {
           amount: data.total || data.amount || 0,
           user_id: data.user_id || 'Unknown',
           status: finalStatus,
-          invoice_id: data.invoice_id
+          invoice_id: data.invoice_id,
+          description: data.description,
+          client_name: data.client_name
         });
       });
 
@@ -133,7 +139,9 @@ const Financials = () => {
           category: data.category || 'General Expense',
           amount: data.amount || 0,
           user_id: data.user_id || 'Unknown',
-          status: finalStatus
+          status: finalStatus,
+          description: data.description,
+          client_name: data.client_name
         });
       });
 
@@ -276,6 +284,8 @@ const Financials = () => {
     } catch {
       setEditDate('');
     }
+    setEditDesc(draft.description || '');
+    setEditClient(draft.client_name || '');
   };
 
   const confirmEditDraft = async () => {
@@ -288,6 +298,8 @@ const Financials = () => {
         amount: editAmount,
         date: editDate || new Date().toISOString()
       };
+      if (editDesc) payload.description = editDesc;
+      if (editClient) payload.client_name = editClient;
       // Keep total in sync for sales
       if (editingDraft.type === 'Income') {
         payload.total = editAmount;
@@ -740,6 +752,27 @@ const Financials = () => {
                 className="bg-[#014D4D] border-[#14B8A6]/30 text-white" 
               />
             </div>
+            {editingDraft?.type === 'Expense' ? (
+              <div className="space-y-2">
+                <Label className="text-[#94A3B8]">Additional Description</Label>
+                <Input 
+                  value={editDesc} 
+                  onChange={(e) => setEditDesc(e.target.value)} 
+                  placeholder="e.g. 10 bags of grower feed"
+                  className="bg-[#014D4D] border-[#14B8A6]/30 text-white" 
+                />
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <Label className="text-[#94A3B8]">Client Name (For AR)</Label>
+                <Input 
+                  value={editClient} 
+                  onChange={(e) => setEditClient(e.target.value)} 
+                  placeholder="e.g. Acme Hotels"
+                  className="bg-[#014D4D] border-[#14B8A6]/30 text-white" 
+                />
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="ghost" className="text-slate-400 hover:text-white" onClick={() => setEditingDraft(null)}>Cancel</Button>

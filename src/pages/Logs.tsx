@@ -3,7 +3,9 @@ import { useData } from '@/contexts/DataContext';
 import { AddLogModal } from '@/components/AddLogModal';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Activity, Droplets, Scale, Fish, Plus, Image as ImageIcon, History } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Activity, Droplets, Scale, Fish, Plus, Image as ImageIcon, History, FileText } from 'lucide-react';
 
 type FilterType = 'today' | 'yesterday' | 'this_week' | 'last_week' | 'last_month' | 'all';
 
@@ -12,6 +14,7 @@ export default function Logs() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [selectedAction, setSelectedAction] = useState<string>('');
   const [filter, setFilter] = useState<FilterType>('today');
+  const [selectedLogForDetails, setSelectedLogForDetails] = useState<any | null>(null);
 
   const handleOpenModal = (eventType: string) => {
     setSelectedAction(eventType);
@@ -143,18 +146,11 @@ export default function Logs() {
                                 </div>
                             </div>
                             
-                            {/* AI Verification Note */}
+                            {/* AI Verification Note (Truncated) */}
                             {(log.data?.notes || log.data?.description) && (
-                                <p className="text-sm text-[#14B8A6] mb-2">
+                                <p className="text-sm text-[#14B8A6] mb-2 line-clamp-2">
                                     <span className="font-semibold">AI Verification: </span> 
                                     {log.data.notes || log.data.description}
-                                </p>
-                            )}
-
-                            {/* Original User Message */}
-                            {log.data?.original_text && log.data.original_text !== "[Visual Uploaded]" && (
-                                <p className="text-sm text-slate-300 mb-3 italic border-l-2 border-slate-600 pl-2">
-                                    "{log.data.original_text}"
                                 </p>
                             )}
                             
@@ -206,6 +202,15 @@ export default function Logs() {
                                     <ImageIcon className="w-3 h-3" /> Photo Attached
                                 </div>
                             )}
+
+                            <Button 
+                              variant="outline" 
+                              size="sm" 
+                              className="w-full mt-3 border-[#14B8A6]/30 text-[#14B8A6] hover:bg-[#14B8A6]/10"
+                              onClick={() => setSelectedLogForDetails(log)}
+                            >
+                              <FileText className="w-4 h-4 mr-2" /> View Details
+                            </Button>
                         </CardContent>
                     </Card>
                 </div>
@@ -220,6 +225,61 @@ export default function Logs() {
         onOpenChange={setIsAddModalOpen} 
         defaultEventType={selectedAction} 
       />
+
+      {/* --- LOG DETAILS MODAL --- */}
+      <Dialog open={!!selectedLogForDetails} onOpenChange={(open) => !open && setSelectedLogForDetails(null)}>
+        <DialogContent className="bg-[#013333] border-[#14B8A6]/30 text-slate-200 max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-[#5EEAD4] flex items-center gap-2">
+              <FileText className="w-5 h-5" /> Log Details
+            </DialogTitle>
+          </DialogHeader>
+          
+          {selectedLogForDetails && (
+            <div className="space-y-6 py-4">
+              {/* AI Deductions */}
+              <div className="space-y-2">
+                <h3 className="text-sm font-bold text-[#14B8A6] uppercase tracking-wider">AI Deductions & Comments</h3>
+                <div className="bg-[#014D4D] p-4 rounded-lg border border-[#14B8A6]/20 text-sm">
+                  {selectedLogForDetails.data?.notes || selectedLogForDetails.data?.description || "No AI deductions recorded."}
+                </div>
+              </div>
+
+              {/* Original Logger Text */}
+              <div className="space-y-2">
+                <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider">Original Technician Log</h3>
+                <div className="bg-black/20 p-4 rounded-lg border border-slate-700/50 text-sm italic text-slate-300">
+                  {selectedLogForDetails.data?.original_text && selectedLogForDetails.data.original_text !== "[Visual Uploaded]" 
+                    ? `"${selectedLogForDetails.data.original_text}"` 
+                    : "[No text provided / Visual Upload Only]"}
+                </div>
+              </div>
+
+              {/* Attached Image */}
+              {selectedLogForDetails.attached_file_url && (
+                <div className="space-y-2">
+                  <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider">Attached Image</h3>
+                  <img 
+                    src={selectedLogForDetails.attached_file_url} 
+                    alt="Log Attachment" 
+                    className="w-full max-w-sm rounded-lg border border-slate-700/50"
+                  />
+                </div>
+              )}
+
+              {/* Full Raw AI Response */}
+              <div className="space-y-2">
+                <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider">Raw AI Response (JSON)</h3>
+                <div className="bg-black/40 p-4 rounded-lg border border-slate-700/50">
+                  <pre className="text-xs text-slate-400 whitespace-pre-wrap font-mono overflow-x-auto">
+                    {JSON.stringify(selectedLogForDetails.data, null, 2)}
+                  </pre>
+                </div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
