@@ -140,7 +140,10 @@ export const telegramWebhook = functions.https.onRequest(async (req, res) => {
         const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ contents: [{ parts: geminiParts }] })
+            body: JSON.stringify({ 
+                contents: [{ parts: geminiParts }],
+                generationConfig: { responseMimeType: "application/json" }
+            })
         });
 
         if (!response.ok) {
@@ -150,32 +153,41 @@ export const telegramWebhook = functions.https.onRequest(async (req, res) => {
         }
 
         const rawData = await response.json();
-        const cleanJsonString = rawData.candidates[0].content.parts[0].text.replace(/```json/g, '').replace(/```/g, '').trim();
-        const aiData = JSON.parse(cleanJsonString);
+        const rawText = rawData.candidates[0].content.parts[0].text;
+        const cleanText = rawText.replace(/```(?:json)?\n?/g, '').replace(/```/g, '').trim();
 
-        // --- SAVE OR UPDATE FIRESTORE ---
-        const logEntry = {
-            timestamp: new Date().toISOString(),
-            technician_name: technicianName,
-            chat_id: chatId,
-            animal_type: "Fish",
-            event_type: aiData.event_type || "General Observation",
-            data: {
-                ponds: aiData.ponds || [],
-                metrics: aiData.metrics || {},
-                ai_confidence: aiData.confidence_score || 0,
-                notes: aiData.ai_visual_verification || "",
-                original_text: combinedText
-            },
-            source: "Telegram"
-        };
+        let aiData;
+        try {
+            aiData = JSON.parse(cleanText);
 
-        if (existingDocId) {
-            await db.collection('logs').doc(existingDocId).set(logEntry, { merge: true });
-            console.log(`💾 Updated existing database log: ${existingDocId}`);
-        } else {
-            const newDoc = await db.collection('logs').add(logEntry);
-            console.log(`💾 Created new database log: ${newDoc.id}`);
+            // --- SAVE OR UPDATE FIRESTORE ---
+            const logEntry = {
+                timestamp: new Date().toISOString(),
+                technician_name: technicianName,
+                chat_id: chatId,
+                animal_type: "Fish",
+                event_type: aiData.event_type || "General Observation",
+                data: {
+                    ponds: aiData.ponds || [],
+                    metrics: aiData.metrics || {},
+                    ai_confidence: aiData.confidence_score || 0,
+                    notes: aiData.ai_visual_verification || "",
+                    original_text: combinedText
+                },
+                source: "Telegram"
+            };
+
+            if (existingDocId) {
+                await db.collection('logs').doc(existingDocId).set(logEntry, { merge: true });
+                console.log(`💾 Updated existing database log: ${existingDocId}`);
+            } else {
+                const newDoc = await db.collection('logs').add(logEntry);
+                console.log(`💾 Created new database log: ${newDoc.id}`);
+            }
+        } catch (dbError) {
+            console.error("Database ingestion or Parsing Error:", dbError, "\nRaw Text was:", rawText);
+            res.status(500).send({ success: false, error: 'Database write failed due to parsing or schema issue.' });
+            return;
         }
 
         // --- RESPOND TO THE USER (Clean HTML Format) ---
