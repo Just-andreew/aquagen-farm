@@ -10,6 +10,7 @@ import {
   orderBy 
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase'; // Import the connection we just made
+import { useAuth } from '@/contexts/AuthContext';
 
 // --- Keep your existing Interfaces exactly as they are ---
 export type TaskStatus = 'todo' | 'in_progress' | 'done';
@@ -84,8 +85,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // We'll skip history syncing for the first hour to keep it simple
   const [inventoryHistory, setInventoryHistory] = useState<InventoryHistoryEntry[]>([]);
 
+  const { isAuthenticated } = useAuth();
+
   // --- 1. SYNC DATA FROM FIREBASE (The "Listener") ---
   useEffect(() => {
+    if (!isAuthenticated) return;
+
     // Listener for Tasks
     const unsubscribeTasks = onSnapshot(collection(db, "tasks"), (snapshot) => {
       const tasksData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Task));
@@ -95,8 +100,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // Listener for Logs
     const unsubscribeLogs = onSnapshot(collection(db, "logs"), (snapshot) => {
+      console.log("🔥 FIRESTORE SNAPSHOT RECEIVED! Size:", snapshot.docs.length);
       const logsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Log));
       setLogs(logsData.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
+    }, (err) => {
+      console.error("🔥 FIRESTORE SNAPSHOT ERROR:", err);
     });
 
     // Listener for Inventory
@@ -110,7 +118,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       unsubscribeLogs();
       unsubscribeInventory();
     };
-  }, []);
+  }, [isAuthenticated]);
 
   // --- 2. UPDATE FUNCTIONS (Writing to Firebase) ---
 

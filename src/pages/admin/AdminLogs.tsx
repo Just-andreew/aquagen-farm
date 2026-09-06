@@ -78,7 +78,7 @@ const AdminLogs = () => {
                     </Badge>
                   </TableCell>
                   <TableCell className="text-[#5EEAD4] text-sm">
-                    {JSON.stringify(log.data).substring(0, 50)}...
+                    {log.data ? JSON.stringify(log.data).substring(0, 50) : "No data"}...
                   </TableCell>
                   <TableCell>
                     <Badge className="bg-yellow-600">Pending</Badge>

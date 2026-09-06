@@ -15,17 +15,17 @@ export const LogFilters = ({ logs, onFilter }: LogFiltersProps) => {
   const [animalType, setAnimalType] = useState<string>('all');
   const [eventType, setEventType] = useState<string>('all');
 
-  const animalTypes = ['all', ...Array.from(new Set(logs.map(log => log.animal_type)))];
-  const eventTypes = ['all', ...Array.from(new Set(logs.map(log => log.event_type)))];
+  const animalTypes = ['all', ...Array.from(new Set(logs.map(log => log.animal_type || 'Unknown')))];
+  const eventTypes = ['all', ...Array.from(new Set(logs.map(log => log.event_type || 'Unknown')))];
 
   useEffect(() => {
     let filtered = logs;
 
     if (search) {
       filtered = filtered.filter(log =>
-        log.technician_name.toLowerCase().includes(search.toLowerCase()) ||
-        log.animal_type.toLowerCase().includes(search.toLowerCase()) ||
-        log.event_type.toLowerCase().includes(search.toLowerCase())
+        (log.technician_name || '').toLowerCase().includes(search.toLowerCase()) ||
+        (log.animal_type || '').toLowerCase().includes(search.toLowerCase()) ||
+        (log.event_type || '').toLowerCase().includes(search.toLowerCase())
       );
     }
 

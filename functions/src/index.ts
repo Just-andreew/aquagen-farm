@@ -83,32 +83,7 @@ export const telegramWebhook = functions.https.onRequest(async (req, res) => {
             return;
         }
 
-        // --- THE 3-MINUTE SESSION GROUPING LOGIC ---
-        let combinedText = rawText || "[Visual Uploaded]";
-        let existingDocId: string | null = null;
-
-        console.log("🔍 Checking database for recent messages within the last 3 minutes...");
-
-        const recentLogs = await db.collection('logs')
-            .where('chat_id', '==', chatId)
-            .orderBy('timestamp', 'desc')
-            .limit(1)
-            .get();
-
-        if (!recentLogs.empty) {
-            const lastDoc = recentLogs.docs[0];
-            const lastLogData = lastDoc.data();
-            const lastLogTime = new Date(lastLogData.timestamp).getTime();
-            const now = Date.now();
-
-            if (now - lastLogTime <= 180000) { // 3 minutes
-                existingDocId = lastDoc.id;
-                const previousContext = lastLogData.data.notes ? `[Previous visual context: ${lastLogData.data.notes}] ` : "";
-                const previousText = lastLogData.data.original_text;
-                combinedText = `${previousContext}${previousText} ; ${rawText}`;
-                console.log(`🔗 Merging with previous log! Combined Context: ${combinedText}`);
-            }
-        }
+        const combinedText = rawText || "[Visual Uploaded]";
 
         // --- PASS TO GEMINI AI ---
         const geminiParts: any[] = [
@@ -140,7 +115,7 @@ export const telegramWebhook = functions.https.onRequest(async (req, res) => {
         const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
+            body: JSON.stringify({
                 contents: [{ parts: geminiParts }],
                 generationConfig: { responseMimeType: "application/json" }
             })
@@ -152,49 +127,46 @@ export const telegramWebhook = functions.https.onRequest(async (req, res) => {
             return;
         }
 
-        const rawData = await response.json();
-        const rawText = rawData.candidates[0].content.parts[0].text;
-        const cleanText = rawText.replace(/```(?:json)?\n?/g, '').replace(/```/g, '').trim();
-
         let aiData;
         try {
-            aiData = JSON.parse(cleanText);
-
-            // --- SAVE OR UPDATE FIRESTORE ---
-            const logEntry = {
-                timestamp: new Date().toISOString(),
-                technician_name: technicianName,
-                chat_id: chatId,
-                animal_type: "Fish",
-                event_type: aiData.event_type || "General Observation",
-                data: {
-                    ponds: aiData.ponds || [],
-                    metrics: aiData.metrics || {},
-                    ai_confidence: aiData.confidence_score || 0,
-                    notes: aiData.ai_visual_verification || "",
-                    original_text: combinedText
-                },
-                source: "Telegram"
-            };
-
-            if (existingDocId) {
-                await db.collection('logs').doc(existingDocId).set(logEntry, { merge: true });
-                console.log(`💾 Updated existing database log: ${existingDocId}`);
-            } else {
-                const newDoc = await db.collection('logs').add(logEntry);
-                console.log(`💾 Created new database log: ${newDoc.id}`);
-            }
-        } catch (dbError) {
-            console.error("Database ingestion or Parsing Error:", dbError, "\nRaw Text was:", rawText);
-            res.status(500).send({ success: false, error: 'Database write failed due to parsing or schema issue.' });
+            const rawData = await response.json();
+            const rawGeminiText = rawData.candidates[0].content.parts[0].text;
+            const cleanJsonString = rawGeminiText.replace(/```(?:json)?\n?/g, '').replace(/```/g, '').trim();
+            aiData = JSON.parse(cleanJsonString);
+        } catch (error) {
+            console.error("JSON Parsing Error:", error);
+            res.status(200).send({ success: true, error: 'Parse Error' });
             return;
         }
 
-        // --- RESPOND TO THE USER (Clean HTML Format) ---
-        const actionMessage = existingDocId ? "Log Updated" : "Log Created";
-        const pondList = aiData.ponds.length > 0 ? aiData.ponds.join(', ') : 'None specified';
+        // --- SAVE OR UPDATE FIRESTORE ---
+        const logEntry = {
+            timestamp: new Date().toISOString(),
+            technician_name: technicianName,
+            chat_id: chatId,
+            animal_type: "Fish",
+            event_type: aiData.event_type || "General Observation",
+            data: {
+                ponds: aiData.ponds || [],
+                metrics: aiData.metrics || {},
+                ai_confidence: aiData.confidence_score || 0,
+                notes: aiData.ai_visual_verification || "",
+                original_text: combinedText
+            },
+            source: "Telegram"
+        };
 
-        const responseText = `✓ <b>${actionMessage}</b>\n<b>Action:</b> ${aiData.event_type}\n<b>Location:</b> ${pondList}\n<blockquote>"${combinedText}"</blockquote>`;
+        try {
+            const newDoc = await db.collection('logs').add(logEntry);
+            console.log(`💾 Created new database log: ${newDoc.id}`);
+        } catch (error) {
+            console.error("Database Write Error:", error);
+        }
+
+        // --- RESPOND TO THE USER (Clean HTML Format) ---
+        const pondList = aiData.ponds && aiData.ponds.length > 0 ? aiData.ponds.join(', ') : 'None specified';
+
+        const responseText = `✓ <b>Log Created</b>\n<b>Action:</b> ${aiData.event_type}\n<b>Location:</b> ${pondList}\n<blockquote>"${combinedText}"</blockquote>`;
 
         await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
             method: 'POST',
