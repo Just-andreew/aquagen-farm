@@ -93,7 +93,7 @@ export const telegramWebhook = functions.https.onRequest(async (req, res) => {
                      Do NOT use markdown code blocks (\`\`\`json). Return ONLY raw JSON.
                      
                      {
-                       "event_type": "Categorize as 'Feeding', 'Weight Measurement', 'Water Quality', 'Harvesting', 'General Observation', or 'Unknown'",
+                       "event_type": "Categorize as 'Feeding', 'Weight Measurement', 'Water Quality', 'Harvesting', 'General Observation', or 'Unknown'. (Hint: Shorthand like 'A1 2kg 4mm' or images of feed/scales with weights/sizes must be categorized as 'Feeding')",
                        "ponds": ["Extract all mentioned pond tags like 'A1', 'B2'. Empty array [] if none found."],
                        "metrics": {
                          "feed_amount": "Include weight with units (e.g., '2.5kg') if feeding, otherwise null",
