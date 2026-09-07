@@ -85,6 +85,12 @@ const Financials = () => {
     .filter(entry => entry.type === 'Income' && !['Void', 'Reversed'].includes(entry.status))
     .reduce((acc, curr) => acc + curr.amount, 0);
 
+  const totalExpenses = ledgerData
+    .filter(entry => entry.type === 'Expense' && !['Void', 'Reversed'].includes(entry.status))
+    .reduce((acc, curr) => acc + curr.amount, 0);
+
+  const netProfit = totalRevenue - totalExpenses;
+
   // --- FETCH DATA ---
   const fetchLedger = async () => {
     setLoadingLedger(true);
@@ -351,6 +357,20 @@ const Financials = () => {
               <CardContent className="p-6">
                 <p className="text-sm text-slate-300 mb-1">Total Revenue (Valid)</p>
                 <p className="text-3xl font-bold text-[#5EEAD4]">KES {totalRevenue.toLocaleString()}</p>
+              </CardContent>
+            </Card>
+            <Card className="bg-[#014D4D] border-[#14B8A6]/30 shadow-none">
+              <CardContent className="p-6">
+                <p className="text-sm text-slate-300 mb-1">Total Expenses (Valid)</p>
+                <p className="text-3xl font-bold text-rose-400">KES {totalExpenses.toLocaleString()}</p>
+              </CardContent>
+            </Card>
+            <Card className="bg-[#014D4D] border-[#14B8A6]/30 shadow-none">
+              <CardContent className="p-6">
+                <p className="text-sm text-slate-300 mb-1">Net P/L</p>
+                <p className={`text-3xl font-bold ${netProfit >= 0 ? 'text-[#5EEAD4]' : 'text-rose-400'}`}>
+                  KES {netProfit.toLocaleString()}
+                </p>
               </CardContent>
             </Card>
           </div>
