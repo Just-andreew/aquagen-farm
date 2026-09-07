@@ -97,6 +97,7 @@ export const telegramWebhook = functions.https.onRequest(async (req, res) => {
                        "ponds": ["Extract all mentioned pond tags like 'A1', 'B2'. Empty array [] if none found."],
                        "metrics": {
                          "feed_amount": "Include weight with units (e.g., '2.5kg') if feeding, otherwise null",
+                         "pellet_size": "Include pellet size if mentioned (e.g., '2mm'), otherwise null",
                          "average_weight_g": "Estimated or stated numerical fish weight in grams if sampling, otherwise null",
                          "water_parameters": "Key-value pairs if water tests are present (e.g., {'ph': 7.5}), otherwise null"
                        },
@@ -161,6 +162,51 @@ export const telegramWebhook = functions.https.onRequest(async (req, res) => {
             console.log(`💾 Created new database log: ${newDoc.id}`);
         } catch (error) {
             console.error("Database Write Error:", error);
+        }
+
+        // --- INVENTORY DEDUCTION LOGIC ---
+        if (aiData.event_type === "Feeding" && aiData.metrics && aiData.metrics.feed_amount && aiData.metrics.pellet_size) {
+            try {
+                // Parse amount (e.g., "2.5kg" -> 2.5)
+                const amountMatch = String(aiData.metrics.feed_amount).match(/[\d.]+/);
+                const amount = amountMatch ? parseFloat(amountMatch[0]) : 0;
+                
+                // Parse pellet size (e.g., "2 mm" -> "2mm")
+                const pelletSize = String(aiData.metrics.pellet_size).toLowerCase().replace(/\s/g, '');
+                
+                if (amount > 0) {
+                    const inventoryRef = db.collection('inventory');
+                    const invSnapshot = await inventoryRef.get();
+                    let targetItemDoc: admin.firestore.DocumentSnapshot | null = null;
+                    
+                    invSnapshot.forEach(doc => {
+                        const item = doc.data();
+                        const itemName = (item.item_name || "").toLowerCase().replace(/\s/g, '');
+                        // Match item if it's feed and has the correct pellet size
+                        if (itemName.includes('feed') && itemName.includes(pelletSize)) {
+                            targetItemDoc = doc;
+                        }
+                    });
+
+                    if (targetItemDoc) {
+                        const currentQty = targetItemDoc.data()?.quantity || 0;
+                        const newQty = Math.max(0, currentQty - amount);
+                        const newStatus = newQty === 0 ? 'out_of_stock' : newQty < 20 ? 'low' : 'in_stock';
+                        
+                        await inventoryRef.doc(targetItemDoc.id).update({
+                            quantity: newQty,
+                            status: newStatus,
+                            last_updated: new Date().toISOString()
+                        });
+                        console.log(`Deducted ${amount} from inventory item ${targetItemDoc.id}`);
+                        
+                        // Append inventory update note to aiData.ai_visual_verification so it's sent in Telegram response
+                        aiData.ai_visual_verification += ` (Deducted ${amount} units of ${targetItemDoc.data()?.item_name} from inventory)`;
+                    }
+                }
+            } catch (invErr) {
+                console.error("Inventory deduction error:", invErr);
+            }
         }
 
         // --- RESPOND TO THE USER (Clean HTML Format) ---
