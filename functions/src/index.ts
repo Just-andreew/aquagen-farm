@@ -86,27 +86,34 @@ export const telegramWebhook = functions.https.onRequest(async (req, res) => {
         const combinedText = rawText || "[Visual Uploaded]";
 
         // --- PASS TO GEMINI AI ---
-        const geminiParts: any[] = [
-            {
-                text: `You are an intelligent aquaculture operation triage engine for aquagen farm specifically and shem adn filmign .
-                     Analyze the farmer's text parameters and the accompanying image. Extract metrics into a strict, raw JSON object.
-                     Do NOT use markdown code blocks (\`\`\`json). Return ONLY raw JSON.
-                     
-                     {
-                       "event_type": "Categorize as 'Feeding', 'Weight Measurement', 'Water Quality', 'Harvesting', 'General Observation', or 'Unknown'. (Hint: Shorthand like 'A1 2kg 4mm' or images of feed/scales with weights/sizes must be categorized as 'Feeding')",
-                       "ponds": ["Extract all mentioned pond tags like 'A1', 'B2'. Empty array [] if none found."],
-                       "metrics": {
-                         "feed_amount": "Include weight with units (e.g., '2.5kg') if feeding, otherwise null",
-                         "pellet_size": "Include pellet size if mentioned (e.g., '2mm'), otherwise null",
-                         "average_weight_g": "Estimated or stated numerical fish weight in grams if sampling, otherwise null",
-                         "water_parameters": "Key-value pairs if water tests are present (e.g., {'ph': 7.5}), otherwise null"
-                       },
-                       "ai_visual_verification": "Summarize what operations task is occurring based on the visual evidence and text.",
-                       "confidence_score": 95
-                     }
+        const systemPrompt = `You are an intelligent aquaculture operations triage engine for AquaGen Farm. Analyze the text parameters and visual evidence.
 
-                     Farmer's Combined Message Context: "${combinedText}"`
-            }
+CRITICAL INSTRUCTIONS:
+1. REJECTION: If the image or text is completely unrelated to fish farming or aquaculture (e.g., a random phone screenshot, a selfie, a meme, unrelated objects), you MUST set "event_type" to "Irrelevant".
+2. INFERRING ACTION: Use context to determine the action. If you see shorthand like "A1 2kg 4mm" AND/OR an image of feed on a scale, intelligently deduce if it's a "Feeding" event. Do not blindly assume any bucket is feeding unless the context supports it (e.g., text mentioning amounts, tanks, or feed sizes).
+3. If it's a valid farm image but no specific action is clear, use "General Observation".
+
+Return your analysis as a strict raw JSON object. Do not use markdown blocks.
+
+JSON Schema:
+{
+  "event_type": "Must be one of: 'Feeding', 'Weight Measurement', 'Water Quality', 'Harvesting', 'General Observation', 'Unknown', or 'Irrelevant'",
+  "ponds": ["Array of pond tags, e.g., 'A1'"],
+  "metrics": {
+    "feed_amount": "Amount of feed with units, e.g., '2kg' or '0.5kg'",
+    "pellet_size": "Pellet size, e.g., '4mm'",
+    "average_weight_g": "Fish weight in grams",
+    "water_parameters": "Key-value pairs",
+    "mortality_count": "Number of dead fish"
+  },
+  "ai_visual_verification": "Summary of operations task or reason for rejection",
+  "confidence_score": 95
+}
+
+Farmer's Combined Message Context: "${combinedText}"`;
+
+        const geminiParts: any[] = [
+            { text: systemPrompt }
         ];
 
         if (imageBase64) {
@@ -137,6 +144,21 @@ export const telegramWebhook = functions.https.onRequest(async (req, res) => {
         } catch (error) {
             console.error("JSON Parsing Error:", error);
             res.status(200).send({ success: true, error: 'Parse Error' });
+            return;
+        }
+
+        if (aiData.event_type === "Irrelevant") {
+            const rejectText = `❌ <b>Rejected</b>\nThis upload does not appear to be related to farm operations.\n<i>Reason: ${aiData.ai_visual_verification || 'Irrelevant content'}</i>`;
+            await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    chat_id: chatId,
+                    text: rejectText,
+                    parse_mode: "HTML"
+                })
+            });
+            res.status(200).send({ success: true });
             return;
         }
 
