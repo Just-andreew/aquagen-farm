@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { collection, addDoc, getDocs, doc, updateDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '@/lib/firebase';
@@ -15,7 +15,8 @@ import { Badge } from '@/components/ui/badge';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { Plus, Trash2, FileText, DollarSign, CreditCard, Building2, Receipt, Edit2 } from 'lucide-react';
+import { Plus, Trash2, FileText, DollarSign, CreditCard, Building2, Receipt, Edit2, Download } from 'lucide-react';
+import { generateInvoicePDF } from '@/lib/pdfGenerator';
 
 // --- TYPES ---
 interface LedgerEntry {
@@ -29,6 +30,13 @@ interface LedgerEntry {
   invoice_id?: string;
   description?: string;
   client_name?: string;
+  kra_pin?: string;
+  items?: Array<{ item: string; qty: number; price: number }>;
+  subtotal?: number;
+  tax?: number;
+  total?: number;
+  payment_terms?: string;
+  due_date?: string;
 }
 
 interface LineItem {
@@ -68,9 +76,9 @@ const Financials = () => {
   const [b2bTerms, setB2bTerms] = useState('Net 30');
   const [b2bItems, setB2bItems] = useState<LineItem[]>([{ item: '', qty: 1, price: 0 }]);
   
-  const b2bSubtotal = b2bItems.reduce((acc, curr) => acc + (curr.qty * curr.price), 0);
-  const b2bTax = b2bSubtotal * 0.16; // 16% VAT
-  const b2bTotal = b2bSubtotal + b2bTax;
+  const b2bTotal = b2bItems.reduce((acc, curr) => acc + (curr.qty * curr.price), 0);
+  const b2bTax = b2bTotal * (16 / 116); // 16% VAT inclusive
+  const b2bSubtotal = b2bTotal - b2bTax;
 
   // --- STATE: EXPENSES ---
   const [expCategory, setExpCategory] = useState('');
@@ -122,7 +130,14 @@ const Financials = () => {
           status: finalStatus,
           invoice_id: data.invoice_id,
           description: data.description,
-          client_name: data.client_name
+          client_name: data.client_name,
+          kra_pin: data.kra_pin,
+          items: data.items,
+          subtotal: data.subtotal,
+          tax: data.tax,
+          total: data.total,
+          payment_terms: data.payment_terms,
+          due_date: data.due_date
         });
       });
 
@@ -195,16 +210,43 @@ const Financials = () => {
     }
   };
 
+  const handleDownloadPDF = async (entry: LedgerEntry) => {
+    try {
+      await generateInvoicePDF({
+        invoice_id: entry.invoice_id || 'N/A',
+        date: entry.date,
+        client_name: entry.client_name || 'Client',
+        kra_pin: entry.kra_pin,
+        items: entry.items || [{ item: entry.description || entry.category, qty: 1, price: entry.amount }],
+        subtotal: entry.subtotal || entry.amount,
+        tax: entry.tax || 0,
+        total: entry.total || entry.amount,
+        payment_terms: entry.payment_terms,
+        due_date: entry.due_date
+      });
+      toast.success("Invoice PDF generated!");
+    } catch (error) {
+      console.error(error);
+      toast.error("Failed to generate PDF.");
+    }
+  };
+
   const handleB2BInvoice = async (status: 'Draft' | 'Pending') => {
     if (!b2bClient || b2bItems.length === 0 || b2bItems.some(i => !i.item || i.qty <= 0 || i.price <= 0)) {
       return toast.error("Please fill all required client and item fields.");
     }
     try {
+      const now = new Date();
+      let dueDate = new Date(now);
+      if (b2bTerms === 'Net 15') dueDate.setDate(now.getDate() + 15);
+      if (b2bTerms === 'Net 30') dueDate.setDate(now.getDate() + 30);
+
       await createInvoiceTransaction({
         type: 'B2B',
         client_name: b2bClient,
         kra_pin: b2bKra,
         payment_terms: b2bTerms,
+        due_date: dueDate.toISOString(),
         items: b2bItems,
         subtotal: b2bSubtotal,
         tax: b2bTax,
@@ -412,6 +454,16 @@ const Financials = () => {
                             {entry.type === 'Income' ? '+' : '-'}{entry.amount.toLocaleString()}
                           </TableCell>
                           <TableCell className="text-right flex justify-end gap-2">
+                            {entry.type === 'Income' && entry.category === 'B2B Invoice' && !['Void', 'Reversed'].includes(entry.status) && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="border-[#14B8A6]/30 text-[#14B8A6] hover:bg-[#14B8A6]/10"
+                                onClick={() => handleDownloadPDF(entry)}
+                              >
+                                <Download className="w-4 h-4 mr-1" /> PDF
+                              </Button>
+                            )}
                             {entry.type === 'Income' && (entry.status === 'Paid' || entry.status === 'Pending') && (
                               <Button 
                                 variant="outline" 
@@ -498,7 +550,7 @@ const Financials = () => {
                 <CardDescription className="text-[#94A3B8]">Generate corporate invoices and track receivables.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                   <div className="space-y-2">
                     <Label className="text-[#94A3B8]">Client Name</Label>
                     <Input placeholder="e.g. Acme Hotels" value={b2bClient} onChange={(e) => setB2bClient(e.target.value)} className="bg-[#014D4D] border-[#14B8A6]/30 text-white" />
@@ -517,6 +569,17 @@ const Financials = () => {
                         <SelectItem value="Net 30">Net 30</SelectItem>
                       </SelectContent>
                     </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-[#94A3B8]">Due Date</Label>
+                    <div className="flex h-10 w-full items-center rounded-md border border-[#14B8A6]/30 bg-[#014D4D] px-3 py-2 text-sm text-white">
+                      {(() => {
+                        const now = new Date();
+                        if (b2bTerms === 'Net 15') now.setDate(now.getDate() + 15);
+                        if (b2bTerms === 'Net 30') now.setDate(now.getDate() + 30);
+                        return now.toLocaleDateString();
+                      })()}
+                    </div>
                   </div>
                 </div>
 
@@ -546,9 +609,9 @@ const Financials = () => {
                 </div>
 
                 <div className="bg-black/20 p-4 rounded-lg border border-[#14B8A6]/10 space-y-2">
-                  <div className="flex justify-between text-sm text-slate-300"><span>Subtotal:</span><span>KES {b2bSubtotal.toLocaleString()}</span></div>
-                  <div className="flex justify-between text-sm text-slate-300"><span>Tax (16% VAT):</span><span>KES {b2bTax.toLocaleString()}</span></div>
-                  <div className="flex justify-between font-bold text-lg text-[#5EEAD4] pt-2 border-t border-[#14B8A6]/20"><span>Grand Total:</span><span>KES {b2bTotal.toLocaleString()}</span></div>
+                  <div className="flex justify-between font-bold text-lg text-[#5EEAD4] pb-2 border-b border-[#14B8A6]/20"><span>Grand Total (Incl. VAT):</span><span>KES {b2bTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
+                  <div className="flex justify-between text-sm text-slate-400 pt-2"><span>VAT (16%) Included:</span><span>KES {b2bTax.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
+                  <div className="flex justify-between text-sm text-slate-400"><span>Subtotal (Excl. VAT):</span><span>KES {b2bSubtotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
                 </div>
               </CardContent>
               <CardFooter className="flex justify-end gap-4 border-t border-[#14B8A6]/10 pt-6">
@@ -649,6 +712,16 @@ const Financials = () => {
                             <TableCell>{getStatusBadge(entry.status)}</TableCell>
                             <TableCell className="text-right font-bold text-emerald-400">+{entry.amount.toLocaleString()}</TableCell>
                             <TableCell className="text-right flex justify-end gap-2">
+                              {entry.category === 'B2B Invoice' && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="border-[#14B8A6]/30 text-[#14B8A6] hover:bg-[#14B8A6]/10"
+                                  onClick={() => handleDownloadPDF(entry)}
+                                >
+                                  <Download className="w-3 h-3 mr-1" /> PDF
+                                </Button>
+                              )}
                               <Button variant="outline" size="sm" className="border-[#14B8A6]/30 text-[#14B8A6] hover:bg-[#14B8A6]/10" onClick={() => handleEditDraft(entry)}>
                                 <Edit2 className="w-3 h-3 mr-1" /> Edit
                               </Button>
