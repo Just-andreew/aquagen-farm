@@ -100,11 +100,12 @@ JSON Schema:
   "event_type": "Must be one of: 'Feeding', 'Weight Measurement', 'Water Quality', 'Harvesting', 'General Observation', 'Unknown', or 'Irrelevant'",
   "ponds": ["Array of pond tags, e.g., 'A1'"],
   "metrics": {
-    "feed_amount": "Amount of feed with units, e.g., '2kg' or '0.5kg'",
+    "feed_amount": "Amount of feed IN KILOGRAMS ONLY (e.g. '2' or '0.5'). Convert grams to kg if necessary.",
     "pellet_size": "Pellet size, e.g., '4mm'",
     "average_weight_g": "Fish weight in grams",
     "water_parameters": "Key-value pairs",
-    "mortality_count": "Number of dead fish"
+    "mortality_count": "Number of dead fish",
+    "time_recorded": "Manually logged time if provided (e.g. '9:00am')"
   },
   "ai_visual_verification": "Summary of operations task or reason for rejection",
   "confidence_score": 95
@@ -190,8 +191,12 @@ Farmer's Combined Message Context: "${combinedText}"`;
         if (aiData.event_type === "Feeding" && aiData.metrics && aiData.metrics.feed_amount && aiData.metrics.pellet_size) {
             try {
                 // Parse amount (e.g., "2.5kg" -> 2.5)
-                const amountMatch = String(aiData.metrics.feed_amount).match(/[\d.]+/);
-                const amount = amountMatch ? parseFloat(amountMatch[0]) : 0;
+                const feedAmountStr = String(aiData.metrics.feed_amount).toLowerCase();
+                const amountMatch = feedAmountStr.match(/[\d.]+/);
+                let amount = amountMatch ? parseFloat(amountMatch[0]) : 0;
+                if (feedAmountStr.includes('g') && !feedAmountStr.includes('kg')) {
+                    amount = amount / 1000;
+                }
                 
                 // Parse pellet size (e.g., "2 mm" -> "2mm")
                 const pelletSize = String(aiData.metrics.pellet_size).toLowerCase().replace(/\s/g, '');
