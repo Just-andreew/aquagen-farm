@@ -618,10 +618,10 @@ const Financials = () => {
                   <div className="flex justify-between text-sm text-slate-400"><span>Subtotal (Excl. VAT):</span><span>KES {b2bSubtotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
                 </div>
               </CardContent>
-              <CardFooter className="flex justify-end gap-4 border-t border-[#14B8A6]/10 pt-6">
-                <Button variant="outline" className="border-[#14B8A6]/30 text-[#14B8A6] hover:bg-[#14B8A6]/10" onClick={() => handleB2BInvoice('Draft', true)}>Save as Quotation</Button>
-                <Button variant="outline" className="border-[#14B8A6]/30 text-[#14B8A6] hover:bg-[#14B8A6]/10" onClick={() => handleB2BInvoice('Draft')}>Save Draft</Button>
-                <Button className="bg-[#14B8A6] text-[#013333] hover:bg-[#14B8A6]/90 font-bold" onClick={() => handleB2BInvoice('Pending')}>Finalize & Issue</Button>
+              <CardFooter className="flex flex-col sm:flex-row justify-end gap-3 sm:gap-4 border-t border-[#14B8A6]/10 pt-6">
+                <Button variant="outline" className="w-full sm:w-auto border-[#14B8A6]/30 text-[#14B8A6] hover:bg-[#14B8A6]/10" onClick={() => handleB2BInvoice('Draft', true)}>Save as Quotation</Button>
+                <Button variant="outline" className="w-full sm:w-auto border-[#14B8A6]/30 text-[#14B8A6] hover:bg-[#14B8A6]/10" onClick={() => handleB2BInvoice('Draft')}>Save Draft</Button>
+                <Button className="w-full sm:w-auto bg-[#14B8A6] text-[#013333] hover:bg-[#14B8A6]/90 font-bold" onClick={() => handleB2BInvoice('Pending')}>Finalize & Issue</Button>
               </CardFooter>
             </Card>
           </div>
