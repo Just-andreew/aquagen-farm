@@ -13,13 +13,14 @@ export interface InvoiceData {
   total: number;
   payment_terms?: string;
   due_date?: string;
+  isQuotation?: boolean;
 }
 
 export const generateInvoicePDF = async (data: InvoiceData) => {
   const doc = new jsPDF();
   
   // 1. Load logo
-  const logoUrl = '/pwa-512x512.png';
+  const logoUrl = '/pwa-512x512-cutout.png';
   
   const addLogo = () => {
     return new Promise<void>((resolve) => {
@@ -53,11 +54,11 @@ export const generateInvoicePDF = async (data: InvoiceData) => {
   // 3. Invoice / Quotation Text (Right side)
   doc.setFontSize(16);
   doc.setTextColor(33, 33, 33);
-  doc.text('INVOICE', 196, 20, { align: 'right' });
+  doc.text(data.isQuotation ? 'QUOTATION' : 'INVOICE', 196, 20, { align: 'right' });
   
   doc.setFontSize(10);
   doc.setTextColor(100, 100, 100);
-  doc.text('Invoice No.', 196, 28, { align: 'right' });
+  doc.text(data.isQuotation ? 'Quotation No.' : 'Invoice No.', 196, 28, { align: 'right' });
   
   doc.setFontSize(12);
   doc.setTextColor(0, 0, 0);
@@ -88,7 +89,7 @@ export const generateInvoicePDF = async (data: InvoiceData) => {
   // 4. Bill To
   doc.setFontSize(10);
   doc.setTextColor(100, 100, 100);
-  doc.text('INVOICE FOR', 14, 75);
+  doc.text(data.isQuotation ? 'QUOTATION FOR' : 'INVOICE FOR', 14, 75);
   
   doc.setFontSize(12);
   doc.setTextColor(33, 33, 33);
@@ -188,5 +189,6 @@ export const generateInvoicePDF = async (data: InvoiceData) => {
 
   // Save the PDF
   const safeName = (data.client_name || 'Client').replace(/[^a-z0-9]/gi, '_').toLowerCase();
-  doc.save(`invoice_${safeName}_${data.invoice_id || 'draft'}.pdf`);
+  const prefix = data.isQuotation ? 'quotation' : 'invoice';
+  doc.save(`${prefix}_${safeName}_${data.invoice_id || 'draft'}.pdf`);
 };

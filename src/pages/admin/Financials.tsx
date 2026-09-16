@@ -222,16 +222,17 @@ const Financials = () => {
         tax: entry.tax || 0,
         total: entry.total || entry.amount,
         payment_terms: entry.payment_terms,
-        due_date: entry.due_date
+        due_date: entry.due_date,
+        isQuotation: entry.category === 'Quotation'
       });
-      toast.success("Invoice PDF generated!");
+      toast.success("PDF generated!");
     } catch (error) {
       console.error(error);
       toast.error("Failed to generate PDF.");
     }
   };
 
-  const handleB2BInvoice = async (status: 'Draft' | 'Pending') => {
+  const handleB2BInvoice = async (status: 'Draft' | 'Pending', isQuotation: boolean = false) => {
     if (!b2bClient || b2bItems.length === 0 || b2bItems.some(i => !i.item || i.qty <= 0 || i.price <= 0)) {
       return toast.error("Please fill all required client and item fields.");
     }
@@ -243,6 +244,7 @@ const Financials = () => {
 
       await createInvoiceTransaction({
         type: 'B2B',
+        category: isQuotation ? 'Quotation' : 'B2B Invoice',
         client_name: b2bClient,
         kra_pin: b2bKra,
         payment_terms: b2bTerms,
@@ -254,7 +256,7 @@ const Financials = () => {
         status: status,
         user_id: user?.id,
       });
-      toast.success(`B2B Invoice saved as ${status}!`);
+      toast.success(`${isQuotation ? 'Quotation' : 'B2B Invoice'} saved as ${status}!`);
       setB2bClient(''); setB2bKra(''); setB2bTerms('Net 30'); setB2bItems([{ item: '', qty: 1, price: 0 }]);
       fetchLedger();
     } catch (error: any) {
@@ -454,7 +456,7 @@ const Financials = () => {
                             {entry.type === 'Income' ? '+' : '-'}{entry.amount.toLocaleString()}
                           </TableCell>
                           <TableCell className="text-right flex justify-end gap-2">
-                            {entry.type === 'Income' && entry.category === 'B2B Invoice' && !['Void', 'Reversed'].includes(entry.status) && (
+                            {entry.type === 'Income' && (entry.category === 'B2B Invoice' || entry.category === 'Quotation') && !['Void', 'Reversed'].includes(entry.status) && (
                               <Button
                                 variant="outline"
                                 size="sm"
@@ -617,6 +619,7 @@ const Financials = () => {
                 </div>
               </CardContent>
               <CardFooter className="flex justify-end gap-4 border-t border-[#14B8A6]/10 pt-6">
+                <Button variant="outline" className="border-[#14B8A6]/30 text-[#14B8A6] hover:bg-[#14B8A6]/10" onClick={() => handleB2BInvoice('Draft', true)}>Save as Quotation</Button>
                 <Button variant="outline" className="border-[#14B8A6]/30 text-[#14B8A6] hover:bg-[#14B8A6]/10" onClick={() => handleB2BInvoice('Draft')}>Save Draft</Button>
                 <Button className="bg-[#14B8A6] text-[#013333] hover:bg-[#14B8A6]/90 font-bold" onClick={() => handleB2BInvoice('Pending')}>Finalize & Issue</Button>
               </CardFooter>
@@ -714,7 +717,7 @@ const Financials = () => {
                             <TableCell>{getStatusBadge(entry.status)}</TableCell>
                             <TableCell className="text-right font-bold text-emerald-400">+{entry.amount.toLocaleString()}</TableCell>
                             <TableCell className="text-right flex justify-end gap-2">
-                              {entry.category === 'B2B Invoice' && (
+                              {(entry.category === 'B2B Invoice' || entry.category === 'Quotation') && (
                                 <Button
                                   variant="outline"
                                   size="sm"
