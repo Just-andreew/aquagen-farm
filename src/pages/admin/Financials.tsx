@@ -586,21 +586,23 @@ const Financials = () => {
                 <div className="space-y-4">
                   <Label className="text-[#94A3B8]">Line Items</Label>
                   {b2bItems.map((item, index) => (
-                    <div key={index} className="flex gap-2 items-center">
+                    <div key={index} className="flex flex-col sm:flex-row gap-2 sm:items-center bg-black/10 sm:bg-transparent p-3 sm:p-0 rounded-md border border-[#14B8A6]/10 sm:border-none">
                       <Input placeholder="Description" value={item.item} onChange={(e) => {
                         const newItems = [...b2bItems]; newItems[index].item = e.target.value; setB2bItems(newItems);
-                      }} className="bg-[#014D4D] border-[#14B8A6]/30 text-white flex-1" />
-                      <Input type="number" min="1" placeholder="Qty" value={item.qty} onChange={(e) => {
-                        const newItems = [...b2bItems]; newItems[index].qty = Number(e.target.value); setB2bItems(newItems);
-                      }} className="bg-[#014D4D] border-[#14B8A6]/30 text-white w-24" />
-                      <Input type="number" min="0" placeholder="Price" value={item.price} onChange={(e) => {
-                        const newItems = [...b2bItems]; newItems[index].price = Number(e.target.value); setB2bItems(newItems);
-                      }} className="bg-[#014D4D] border-[#14B8A6]/30 text-white w-32" />
-                      <Button variant="ghost" size="icon" className="text-slate-400 hover:text-red-400" onClick={() => {
-                        if (b2bItems.length > 1) {
-                          setB2bItems(b2bItems.filter((_, i) => i !== index));
-                        }
-                      }}><Trash2 className="h-4 w-4" /></Button>
+                      }} className="bg-[#014D4D] border-[#14B8A6]/30 text-white w-full sm:flex-1" />
+                      <div className="flex gap-2 items-center w-full sm:w-auto">
+                        <Input type="number" min="1" placeholder="Qty" value={item.qty} onChange={(e) => {
+                          const newItems = [...b2bItems]; newItems[index].qty = Number(e.target.value); setB2bItems(newItems);
+                        }} className="bg-[#014D4D] border-[#14B8A6]/30 text-white flex-1 sm:w-24" />
+                        <Input type="number" min="0" placeholder="Price" value={item.price} onChange={(e) => {
+                          const newItems = [...b2bItems]; newItems[index].price = Number(e.target.value); setB2bItems(newItems);
+                        }} className="bg-[#014D4D] border-[#14B8A6]/30 text-white flex-1 sm:w-32" />
+                        <Button variant="ghost" size="icon" className="text-slate-400 hover:text-red-400 shrink-0" onClick={() => {
+                          if (b2bItems.length > 1) {
+                            setB2bItems(b2bItems.filter((_, i) => i !== index));
+                          }
+                        }}><Trash2 className="h-4 w-4" /></Button>
+                      </div>
                     </div>
                   ))}
                   <Button variant="outline" size="sm" className="border-[#14B8A6]/30 text-[#14B8A6] hover:bg-[#14B8A6]/10" onClick={() => setB2bItems([...b2bItems, { item: '', qty: 1, price: 0 }])}>
