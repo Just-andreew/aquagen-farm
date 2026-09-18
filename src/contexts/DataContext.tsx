@@ -54,8 +54,10 @@ export interface InventoryItem {
 export interface InventoryHistoryEntry {
   id: string;
   item_id: string;
+  item_name?: string;
   change: number;
   reason: string;
+  changed_by_name?: string;
   timestamp: string;
 }
 
@@ -73,6 +75,7 @@ interface DataContextType {
   updateInventory: (id: string, quantity: number, reason?: string) => void;
   consumeInventory: (items: { item_id: string; quantity: number }[]) => void;
   addInventoryItem: (item: Omit<InventoryItem, 'id' | 'last_updated'>) => void;
+  editInventoryItem: (id: string, updates: Partial<InventoryItem>) => Promise<void>;
   deleteInventoryItem: (id: string) => Promise<void>;
 }
 
@@ -82,10 +85,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [tasks, setTasks] = useState<Task[]>([]);
   const [logs, setLogs] = useState<Log[]>([]);
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
-  // We'll skip history syncing for the first hour to keep it simple
   const [inventoryHistory, setInventoryHistory] = useState<InventoryHistoryEntry[]>([]);
 
-  const { isAuthenticated } = useAuth();
+  const { user, isAuthenticated } = useAuth();
 
   // --- 1. SYNC DATA FROM FIREBASE (The "Listener") ---
   useEffect(() => {
@@ -113,10 +115,17 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setInventory(invData);
     });
 
+    // Listener for Inventory History
+    const unsubscribeInventoryHistory = onSnapshot(query(collection(db, "inventory_history"), orderBy('timestamp', 'desc')), (snapshot) => {
+      const histData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as InventoryHistoryEntry));
+      setInventoryHistory(histData);
+    });
+
     return () => {
       unsubscribeTasks();
       unsubscribeLogs();
       unsubscribeInventory();
+      unsubscribeInventoryHistory();
     };
   }, [isAuthenticated]);
 
@@ -148,6 +157,17 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
   
   const deleteInventoryItem = async (id: string) => {
+    const item = inventory.find(i => i.id === id);
+    if (item) {
+      await addDoc(collection(db, "inventory_history"), {
+        item_id: id,
+        item_name: item.item_name,
+        change: -item.quantity,
+        reason: "Item Deleted",
+        changed_by_name: user?.name || 'Unknown',
+        timestamp: new Date().toISOString()
+      });
+    }
     await deleteDoc(doc(db, "inventory", id));
   };
 
@@ -166,9 +186,18 @@ const updateLog = async (id: string, updates: Partial<Log>) => {
   };
 
   const addInventoryItem = async (item: Omit<InventoryItem, 'id' | 'last_updated'>) => {
-    await addDoc(collection(db, "inventory"), {
+    const newDoc = await addDoc(collection(db, "inventory"), {
       ...item,
       last_updated: new Date().toISOString(),
+    });
+
+    await addDoc(collection(db, "inventory_history"), {
+      item_id: newDoc.id,
+      item_name: item.item_name,
+      change: item.quantity,
+      reason: "Initial Stock",
+      changed_by_name: user?.name || 'Unknown',
+      timestamp: new Date().toISOString()
     });
   };
 
@@ -187,6 +216,41 @@ const updateLog = async (id: string, updates: Partial<Log>) => {
       status: newStatus,
       last_updated: new Date().toISOString()
     });
+
+    // 3. Log to History
+    await addDoc(collection(db, "inventory_history"), {
+      item_id: id,
+      item_name: item.item_name,
+      change: quantity,
+      reason: reason,
+      changed_by_name: user?.name || 'Unknown',
+      timestamp: new Date().toISOString()
+    });
+  };
+
+  const editInventoryItem = async (id: string, updates: Partial<InventoryItem>) => {
+    const item = inventory.find(i => i.id === id);
+    if (!item) return;
+    
+    const itemRef = doc(db, "inventory", id);
+    await updateDoc(itemRef, {
+      ...updates,
+      last_updated: new Date().toISOString()
+    });
+
+    let qtyChange = 0;
+    if (updates.quantity !== undefined && updates.quantity !== item.quantity) {
+      qtyChange = updates.quantity - item.quantity;
+    }
+
+    await addDoc(collection(db, "inventory_history"), {
+      item_id: id,
+      item_name: updates.item_name || item.item_name,
+      change: qtyChange,
+      reason: "Admin Correction",
+      changed_by_name: user?.name || 'Unknown',
+      timestamp: new Date().toISOString()
+    });
   };
 
   const consumeInventory = (items: { item_id: string; quantity: number }[]) => {
@@ -197,7 +261,7 @@ const updateLog = async (id: string, updates: Partial<Log>) => {
 
   return (
     <DataContext.Provider
-      value={{ tasks, logs, inventory, inventoryHistory, addTask, updateTask, deleteTask, deleteLog, deleteInventoryItem, addLog, updateLog, updateInventory, consumeInventory, addInventoryItem }}
+      value={{ tasks, logs, inventory, inventoryHistory, addTask, updateTask, deleteTask, deleteLog, deleteInventoryItem, addLog, updateLog, updateInventory, consumeInventory, addInventoryItem, editInventoryItem }}
     >
       {children}
     </DataContext.Provider>

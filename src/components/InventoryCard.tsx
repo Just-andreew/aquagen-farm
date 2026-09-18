@@ -1,9 +1,12 @@
 import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { InventoryModal } from '@/components/InventoryModal';
+import { EditInventoryModal } from '@/components/EditInventoryModal';
 import { Button } from '@/components/ui/button';
-import { Package, Plus, Minus } from 'lucide-react';
+import { Package, Plus, Minus, Trash2, Edit } from 'lucide-react';
 import { format } from 'date-fns';
+import { useAuth } from '@/contexts/AuthContext';
+import { useData } from '@/contexts/DataContext';
 import type { InventoryItem } from '@/contexts/DataContext';
 
 interface InventoryCardProps {
@@ -11,8 +14,13 @@ interface InventoryCardProps {
 }
 
 export const InventoryCard = ({ item }: InventoryCardProps) => {
+  const { user } = useAuth();
+  const { deleteInventoryItem } = useData();
   const [modalOpen, setModalOpen] = useState(false);
   const [modalType, setModalType] = useState<'add' | 'consume'>('add');
+  const [editModalOpen, setEditModalOpen] = useState(false);
+
+  const isAdmin = user?.role === 'admin';
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -26,6 +34,16 @@ export const InventoryCard = ({ item }: InventoryCardProps) => {
   const openModal = (type: 'add' | 'consume') => {
     setModalType(type);
     setModalOpen(true);
+  };
+
+  const handleDelete = async () => {
+    if (window.confirm('Are you sure you want to delete this inventory item?')) {
+      try {
+        await deleteInventoryItem(item.id);
+      } catch (error) {
+        console.error("Failed to delete item", error);
+      }
+    }
   };
 
   return (
@@ -74,6 +92,28 @@ export const InventoryCard = ({ item }: InventoryCardProps) => {
               <Minus className="w-4 h-4" />
               Consume
             </Button>
+            {isAdmin && (
+              <>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setEditModalOpen(true)}
+                  className="gap-2 text-blue-500 hover:text-blue-600 hover:bg-blue-50"
+                >
+                  <Edit className="w-4 h-4" />
+                  Edit
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleDelete}
+                  className="gap-2 text-red-500 hover:text-red-600 hover:bg-red-50"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  Delete
+                </Button>
+              </>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -83,6 +123,12 @@ export const InventoryCard = ({ item }: InventoryCardProps) => {
         onOpenChange={setModalOpen}
         item={item}
         type={modalType}
+      />
+
+      <EditInventoryModal
+        open={editModalOpen}
+        onOpenChange={setEditModalOpen}
+        item={item}
       />
     </>
   );
