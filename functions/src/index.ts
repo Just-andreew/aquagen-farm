@@ -85,6 +85,26 @@ export const telegramWebhook = functions.https.onRequest(async (req, res) => {
 
         const combinedText = rawText || "[Visual Uploaded]";
 
+        // ==========================================
+        // SLIDING CONTEXT MEMORY
+        // ==========================================
+        const sessionDoc = await db.collection('telegram_sessions').doc(String(chatId)).get();
+        const session = sessionDoc.exists ? sessionDoc.data() : null;
+        let recentContext = session?.recent_context || [];
+        const oneHourAgo = Date.now() - (60 * 60 * 1000);
+        recentContext = recentContext.filter((c: any) => c.timestamp > oneHourAgo);
+
+        if (rawText.trim() && !imageBase64) {
+            recentContext.push({ text: rawText.trim(), timestamp: Date.now() });
+            if (recentContext.length > 5) recentContext.shift();
+            await db.collection('telegram_sessions').doc(String(chatId)).set({ recent_context: recentContext }, { merge: true });
+        }
+
+        let contextString = recentContext.map((c: any) => `[${new Date(c.timestamp).toLocaleTimeString()}] ${c.text}`).join('\n');
+        if (contextString) {
+            contextString = `\nRecent Chat Context from User (use this to fill in missing details like 'time_recorded'):\n${contextString}`;
+        }
+
         // --- PASS TO GEMINI AI ---
         const systemPrompt = `You are an intelligent aquaculture operations triage engine for AquaGen Farm. Analyze the text parameters and visual evidence.
 
@@ -109,7 +129,7 @@ JSON Schema:
   },
   "ai_visual_verification": "Summary of operations task or reason for rejection",
   "confidence_score": 95
-}
+}${contextString}
 
 Farmer's Combined Message Context: "${combinedText}"`;
 
