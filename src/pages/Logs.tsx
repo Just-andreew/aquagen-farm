@@ -7,13 +7,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/button';
 import { Activity, Droplets, Scale, Fish, Plus, Image as ImageIcon, History, FileText } from 'lucide-react';
 
-type FilterType = 'today' | 'yesterday' | 'this_week' | 'last_week' | 'last_month' | 'all';
+type FilterType = 'today' | 'yesterday' | 'this_week' | 'last_week' | 'this_month' | 'last_month' | 'all';
 
 export default function Logs() {
   const { logs } = useData();
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [selectedAction, setSelectedAction] = useState<string>('');
-  const [filter, setFilter] = useState<FilterType>('today');
+  const [filter, setFilter] = useState<FilterType>('this_month');
   const [selectedLogForDetails, setSelectedLogForDetails] = useState<any | null>(null);
 
   const handleOpenModal = (eventType: string) => {
@@ -40,6 +40,7 @@ export default function Logs() {
       case 'yesterday': return logTime >= startOfYesterday && logTime < startOfToday;
       case 'this_week': return logTime >= startOfWeek;
       case 'last_week': return logTime >= startOfLastWeek && logTime < startOfWeek;
+      case 'this_month': return logTime >= startOfMonth;
       case 'last_month': return logTime >= startOfLastMonth && logTime < startOfMonth;
       case 'all': default: return true;
     }
@@ -104,6 +105,7 @@ export default function Logs() {
               { id: 'yesterday', label: 'Yesterday' },
               { id: 'this_week', label: 'This Week' },
               { id: 'last_week', label: 'Last Week' },
+              { id: 'this_month', label: 'This Month' },
               { id: 'last_month', label: 'Last Month' },
               { id: 'all', label: 'All History' }
             ].map((f) => (

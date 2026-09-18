@@ -229,8 +229,8 @@ Farmer's Combined Message Context: "${combinedText}"`;
                     invSnapshot.forEach(doc => {
                         const item = doc.data();
                         const itemName = (item.item_name || "").toLowerCase().replace(/\s/g, '');
-                        // Match item if it's feed and has the correct pellet size
-                        if (itemName.includes('feed') && itemName.includes(pelletSize)) {
+                        // Match item if it has the correct pellet size
+                        if (pelletSize && pelletSize !== 'unknownsize' && itemName.includes(pelletSize)) {
                             targetItemDoc = doc;
                         }
                     });
@@ -246,6 +246,15 @@ Farmer's Combined Message Context: "${combinedText}"`;
                             last_updated: new Date().toISOString()
                         });
                         console.log(`Deducted ${amount} from inventory item ${targetItemDoc.id}`);
+                        
+                        await db.collection('inventory_history').add({
+                            item_id: targetItemDoc.id,
+                            item_name: targetItemDoc.data()?.item_name || 'Unknown',
+                            change: -amount,
+                            reason: "Telegram Auto-Deduction",
+                            changed_by_name: technicianName || "Bot",
+                            timestamp: new Date().toISOString()
+                        });
                         
                         // Append inventory update note to aiData.ai_visual_verification so it's sent in Telegram response
                         aiData.ai_visual_verification += ` (Deducted ${amount} units of ${targetItemDoc.data()?.item_name} from inventory)`;
