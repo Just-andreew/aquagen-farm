@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
-import { Menu, X, Home, ListTodo, FileText, Package, Users, BarChart, LogOut, DollarSign, Settings as SettingsIcon } from 'lucide-react';
+import { Menu, X, Home, ListTodo, FileText, Package, Users, BarChart, LogOut, DollarSign, Settings as SettingsIcon, Droplet } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 
 interface LayoutProps {
@@ -26,6 +26,10 @@ export const Layout = ({ children }: LayoutProps) => {
     { to: '/inventory', icon: Package, label: 'Inventory' },
   ];
 
+  if (user?.role === 'supervisor') {
+    technicianLinks.push({ to: '/feeding', icon: Droplet, label: 'Feeding' });
+  }
+
   const adminLinks = [
     { to: '/admin', icon: Home, label: 'Dashboard' },
     { to: '/admin/management', icon: Users, label: 'Management' },
@@ -34,6 +38,7 @@ export const Layout = ({ children }: LayoutProps) => {
     { to: '/admin/inventory', icon: Package, label: 'Inventory' },
     { to: '/admin/reports', icon: BarChart, label: 'Reports' },
     { to: '/admin/settings', icon: SettingsIcon, label: 'Bot Access' },
+    { to: '/feeding', icon: Droplet, label: 'Feeding' },
   ];
 
   const links = user?.role === 'admin' ? adminLinks : technicianLinks;

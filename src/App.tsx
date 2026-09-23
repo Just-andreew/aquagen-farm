@@ -24,6 +24,7 @@ const Reports = lazy(() => import('@/pages/admin/Reports'));
 const Financials = lazy(() => import('@/pages/admin/Financials'));
 const Settings = lazy(() => import('@/pages/admin/BotAccess'));
 const NotFound = lazy(() => import('@/pages/NotFound'));
+const AutomaticFeeding = lazy(() => import('@/pages/AutomaticFeeding'));
 
 // --- 3. SECURITY GUARD ---
 // This wrapper ensures only logged-in users can access the dashboard routes.
@@ -107,6 +108,14 @@ function App() {
                 element={
                   <Suspense fallback={<div className="p-8 text-center text-[#14B8A6]">Loading Inventory...</div>}>
                     <Inventory />
+                  </Suspense>
+                }
+              />
+              <Route
+                path="/feeding"
+                element={
+                  <Suspense fallback={<div className="p-8 text-center text-[#14B8A6]">Loading Feeding Control...</div>}>
+                    <AutomaticFeeding />
                   </Suspense>
                 }
               />
