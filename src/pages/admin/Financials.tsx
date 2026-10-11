@@ -15,7 +15,7 @@ import { Badge } from '@/components/ui/badge';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { Plus, Trash2, FileText, DollarSign, CreditCard, Building2, Receipt, Edit2, Download } from 'lucide-react';
+import { Plus, Trash2, FileText, DollarSign, CreditCard, Building2, Receipt, Edit2, Download, Calendar, X } from 'lucide-react';
 import { generateInvoicePDF } from '@/lib/pdfGenerator';
 
 // --- TYPES ---
@@ -36,6 +36,7 @@ interface LedgerEntry {
   tax?: number;
   total?: number;
   payment_terms?: string;
+  payment_method?: string;
   due_date?: string;
 }
 
@@ -88,16 +89,105 @@ const Financials = () => {
   const [expFile, setExpFile] = useState<File | null>(null);
   const [isUploadingExp, setIsUploadingExp] = useState(false);
 
-  // --- COMPUTED METRICS ---
-  const totalRevenue = ledgerData
-    .filter(entry => entry.type === 'Income' && !['Void', 'Reversed'].includes(entry.status))
-    .reduce((acc, curr) => acc + curr.amount, 0);
+  // --- STATE: DATE & PAYMENT FILTERS ---
+  const [datePreset, setDatePreset] = useState<string>('all');
+  const [filterStartDate, setFilterStartDate] = useState<string>('');
+  const [filterEndDate, setFilterEndDate] = useState<string>('');
+  const [paymentFilter, setPaymentFilter] = useState<string>('all');
 
-  const totalExpenses = ledgerData
-    .filter(entry => entry.type === 'Expense' && !['Void', 'Reversed'].includes(entry.status))
-    .reduce((acc, curr) => acc + curr.amount, 0);
+  const toDateInputString = (d: Date) => {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const handlePresetChange = (preset: string) => {
+    setDatePreset(preset);
+    const now = new Date();
+    
+    if (preset === 'all') {
+      setFilterStartDate('');
+      setFilterEndDate('');
+    } else if (preset === 'today') {
+      const todayStr = toDateInputString(now);
+      setFilterStartDate(todayStr);
+      setFilterEndDate(todayStr);
+    } else if (preset === 'this_week') {
+      const current = new Date(now);
+      const day = current.getDay();
+      const diff = current.getDate() - day + (day === 0 ? -6 : 1);
+      const monday = new Date(current.setDate(diff));
+      setFilterStartDate(toDateInputString(monday));
+      setFilterEndDate(toDateInputString(new Date()));
+    } else if (preset === 'this_month') {
+      const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+      setFilterStartDate(toDateInputString(firstDay));
+      setFilterEndDate(toDateInputString(new Date()));
+    } else if (preset === 'last_30') {
+      const past30 = new Date();
+      past30.setDate(past30.getDate() - 30);
+      setFilterStartDate(toDateInputString(past30));
+      setFilterEndDate(toDateInputString(now));
+    }
+  };
+
+  const handleClearFilters = () => {
+    setDatePreset('all');
+    setFilterStartDate('');
+    setFilterEndDate('');
+    setPaymentFilter('all');
+  };
+
+  // --- FILTERED LEDGER DATA ---
+  const filteredLedgerData = useMemo(() => {
+    return ledgerData.filter(entry => {
+      // 1. Date filtering
+      if (entry.date) {
+        const entryDate = new Date(entry.date);
+        if (!isNaN(entryDate.getTime())) {
+          if (filterStartDate) {
+            const [sY, sM, sD] = filterStartDate.split('-').map(Number);
+            const startLimit = new Date(sY, sM - 1, sD, 0, 0, 0, 0);
+            if (entryDate < startLimit) return false;
+          }
+
+          if (filterEndDate) {
+            const [eY, eM, eD] = filterEndDate.split('-').map(Number);
+            const endLimit = new Date(eY, eM - 1, eD, 23, 59, 59, 999);
+            if (entryDate > endLimit) return false;
+          }
+        }
+      }
+
+      // 2. Payment method filtering
+      if (paymentFilter !== 'all') {
+        const m = (entry.payment_method || '').toLowerCase();
+        if (paymentFilter === 'Cash' && m !== 'cash') return false;
+        if (paymentFilter === 'M-Pesa' && !m.includes('mpesa') && !m.includes('m-pesa')) return false;
+        if (paymentFilter === 'Credit' && m !== 'credit') return false;
+      }
+
+      return true;
+    });
+  }, [ledgerData, filterStartDate, filterEndDate, paymentFilter]);
+
+  // --- COMPUTED METRICS (DRIVEN BY FILTERED DATA) ---
+  const totalRevenue = useMemo(() => {
+    return filteredLedgerData
+      .filter(entry => entry.type === 'Income' && !['Void', 'Reversed'].includes(entry.status))
+      .reduce((acc, curr) => acc + curr.amount, 0);
+  }, [filteredLedgerData]);
+
+  const totalExpenses = useMemo(() => {
+    return filteredLedgerData
+      .filter(entry => entry.type === 'Expense' && !['Void', 'Reversed'].includes(entry.status))
+      .reduce((acc, curr) => acc + curr.amount, 0);
+  }, [filteredLedgerData]);
 
   const netProfit = totalRevenue - totalExpenses;
+  const validLedgerEntries = filteredLedgerData.filter(e => e.status !== 'Draft');
+  const isFiltered = datePreset !== 'all' || filterStartDate !== '' || filterEndDate !== '' || paymentFilter !== 'all';
 
   // --- FETCH DATA ---
   const fetchLedger = async () => {
@@ -120,6 +210,8 @@ const Financials = () => {
         if (data.date && typeof data.date === 'string') dateVal = data.date;
         else if (data.created_at && typeof data.created_at === 'string') dateVal = data.created_at;
 
+        const paymentMethod = data.payment_method || data.paymentMethod || (data.type === 'POS' ? (data.payment_terms || 'Cash') : data.payment_terms);
+
         entries.push({
           id: doc.id,
           date: dateVal,
@@ -137,6 +229,7 @@ const Financials = () => {
           tax: data.tax,
           total: data.total,
           payment_terms: data.payment_terms,
+          payment_method: paymentMethod,
           due_date: data.due_date
         });
       });
@@ -153,6 +246,8 @@ const Financials = () => {
         if (data.date && typeof data.date === 'string') dateVal = data.date;
         else if (data.created_at && typeof data.created_at === 'string') dateVal = data.created_at;
 
+        const paymentMethod = data.payment_method || data.paymentMethod;
+
         entries.push({
           id: doc.id,
           date: dateVal,
@@ -162,7 +257,8 @@ const Financials = () => {
           user_id: data.user_id || 'Unknown',
           status: finalStatus,
           description: data.description,
-          client_name: data.client_name
+          client_name: data.client_name,
+          payment_method: paymentMethod
         });
       });
 
@@ -366,8 +462,6 @@ const Financials = () => {
   };
 
   // --- RENDER HELPERS ---
-  const validLedgerEntries = ledgerData.filter(e => e.status !== 'Draft');
-
   const getStatusBadge = (status: string) => {
     switch(status) {
       case 'Paid': return <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20">{status}</Badge>;
@@ -395,23 +489,123 @@ const Financials = () => {
         </TabsList>
 
         {/* --- TAB 1: LEDGER --- */}
-        <TabsContent value="ledger" className="mt-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+        <TabsContent value="ledger" className="mt-6 space-y-6">
+          {/* --- DATE & FILTER TOOLBAR --- */}
+          <Card className="bg-[#013333] border-[#14B8A6]/30">
+            <CardContent className="p-4 flex flex-wrap items-center justify-between gap-4">
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-2 text-[#5EEAD4]">
+                  <Calendar className="h-4 w-4 text-[#14B8A6]" />
+                  <span className="text-sm font-semibold">Date Range:</span>
+                </div>
+
+                <Select value={datePreset} onValueChange={handlePresetChange}>
+                  <SelectTrigger className="w-[140px] bg-[#014D4D] border-[#14B8A6]/30 text-white text-xs h-9">
+                    <SelectValue placeholder="Period" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-[#014D4D] border-[#14B8A6] text-white">
+                    <SelectItem value="all">All Time</SelectItem>
+                    <SelectItem value="today">Today</SelectItem>
+                    <SelectItem value="this_week">This Week</SelectItem>
+                    <SelectItem value="this_month">This Month</SelectItem>
+                    <SelectItem value="last_30">Last 30 Days</SelectItem>
+                    <SelectItem value="custom">Custom Range</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="date"
+                    value={filterStartDate}
+                    onChange={(e) => {
+                      setFilterStartDate(e.target.value);
+                      setDatePreset('custom');
+                    }}
+                    className="w-[135px] bg-[#014D4D] border-[#14B8A6]/30 text-white text-xs h-9"
+                  />
+                  <span className="text-slate-400 text-xs">to</span>
+                  <Input
+                    type="date"
+                    value={filterEndDate}
+                    onChange={(e) => {
+                      setFilterEndDate(e.target.value);
+                      setDatePreset('custom');
+                    }}
+                    className="w-[135px] bg-[#014D4D] border-[#14B8A6]/30 text-white text-xs h-9"
+                  />
+                </div>
+
+                <div className="flex items-center gap-2 pl-2 border-l border-[#14B8A6]/20">
+                  <span className="text-xs text-slate-300">Method:</span>
+                  <Select value={paymentFilter} onValueChange={setPaymentFilter}>
+                    <SelectTrigger className="w-[125px] bg-[#014D4D] border-[#14B8A6]/30 text-white text-xs h-9">
+                      <SelectValue placeholder="All Methods" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-[#014D4D] border-[#14B8A6] text-white">
+                      <SelectItem value="all">All Methods</SelectItem>
+                      <SelectItem value="Cash">Cash</SelectItem>
+                      <SelectItem value="M-Pesa">M-Pesa</SelectItem>
+                      <SelectItem value="Credit">Credit</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {isFiltered && (
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-slate-400">
+                    Showing <strong className="text-[#5EEAD4]">{validLedgerEntries.length}</strong> of {ledgerData.filter(e => e.status !== 'Draft').length} txns
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleClearFilters}
+                    className="border-[#14B8A6]/30 text-[#14B8A6] hover:bg-[#14B8A6]/10 text-xs h-8"
+                  >
+                    <X className="h-3 w-3 mr-1" /> Reset Filters
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <Card className="bg-[#014D4D] border-[#14B8A6]/30 shadow-none">
               <CardContent className="p-6">
-                <p className="text-sm text-slate-300 mb-1">Total Revenue (Valid)</p>
+                <div className="flex justify-between items-start mb-1">
+                  <p className="text-sm text-slate-300">Total Revenue (Valid)</p>
+                  {isFiltered && (
+                    <span className="text-[10px] text-[#14B8A6] bg-[#013333] px-2 py-0.5 rounded-full border border-[#14B8A6]/30 font-medium">
+                      Filtered
+                    </span>
+                  )}
+                </div>
                 <p className="text-3xl font-bold text-[#5EEAD4]">KES {totalRevenue.toLocaleString()}</p>
               </CardContent>
             </Card>
             <Card className="bg-[#014D4D] border-[#14B8A6]/30 shadow-none">
               <CardContent className="p-6">
-                <p className="text-sm text-slate-300 mb-1">Total Expenses (Valid)</p>
+                <div className="flex justify-between items-start mb-1">
+                  <p className="text-sm text-slate-300">Total Expenses (Valid)</p>
+                  {isFiltered && (
+                    <span className="text-[10px] text-rose-400 bg-[#013333] px-2 py-0.5 rounded-full border border-rose-400/30 font-medium">
+                      Filtered
+                    </span>
+                  )}
+                </div>
                 <p className="text-3xl font-bold text-rose-400">KES {totalExpenses.toLocaleString()}</p>
               </CardContent>
             </Card>
             <Card className="bg-[#014D4D] border-[#14B8A6]/30 shadow-none">
               <CardContent className="p-6">
-                <p className="text-sm text-slate-300 mb-1">Net P/L</p>
+                <div className="flex justify-between items-start mb-1">
+                  <p className="text-sm text-slate-300">Net P/L</p>
+                  {isFiltered && (
+                    <span className="text-[10px] text-slate-300 bg-[#013333] px-2 py-0.5 rounded-full border border-[#14B8A6]/30 font-medium">
+                      Filtered
+                    </span>
+                  )}
+                </div>
                 <p className={`text-3xl font-bold ${netProfit >= 0 ? 'text-[#5EEAD4]' : 'text-rose-400'}`}>
                   KES {netProfit.toLocaleString()}
                 </p>
@@ -421,8 +615,18 @@ const Financials = () => {
           
           <Card className="bg-[#013333] border-[#14B8A6]/20">
             <CardHeader>
-              <CardTitle className="text-[#5EEAD4] flex items-center gap-2"><FileText className="h-5 w-5"/> P&L Command Center</CardTitle>
-              <CardDescription className="text-[#94A3B8]">High-level view of all income and expenses.</CardDescription>
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                <div>
+                  <CardTitle className="text-[#5EEAD4] flex items-center gap-2"><FileText className="h-5 w-5"/> P&L Command Center</CardTitle>
+                  <CardDescription className="text-[#94A3B8]">High-level view of all income and expenses.</CardDescription>
+                </div>
+                {isFiltered && (
+                  <Badge variant="outline" className="border-[#14B8A6]/40 text-[#5EEAD4] bg-[#014D4D]/50 text-xs w-fit">
+                    Active Filter: {datePreset !== 'custom' ? (datePreset === 'all' ? 'All Time' : datePreset.replace('_', ' ')) : `${filterStartDate || '...'} to ${filterEndDate || '...'}`}
+                    {paymentFilter !== 'all' ? ` • ${paymentFilter}` : ''}
+                  </Badge>
+                )}
+              </div>
             </CardHeader>
             <CardContent>
               {loadingLedger ? (
@@ -435,6 +639,7 @@ const Financials = () => {
                         <TableHead className="text-[#14B8A6]">Date</TableHead>
                         <TableHead className="text-[#14B8A6]">Ref</TableHead>
                         <TableHead className="text-[#14B8A6]">Category</TableHead>
+                        <TableHead className="text-[#14B8A6]">Payment</TableHead>
                         <TableHead className="text-[#14B8A6]">Status</TableHead>
                         <TableHead className="text-[#14B8A6] text-right">Amount (KES)</TableHead>
                         <TableHead className="text-[#14B8A6] text-right">Actions</TableHead>
@@ -450,6 +655,41 @@ const Financials = () => {
                               <span>{entry.category}</span>
                               <span className={`text-[10px] ${entry.type === 'Income' ? 'text-emerald-400' : 'text-rose-400'}`}>{entry.type}</span>
                             </div>
+                          </TableCell>
+                          <TableCell>
+                            {entry.payment_method ? (
+                              <Badge
+                                variant="outline"
+                                className={
+                                  entry.payment_method.toLowerCase().includes('mpesa') || entry.payment_method.toLowerCase().includes('m-pesa')
+                                    ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30 text-xs font-medium px-2 py-0.5 flex items-center gap-1.5 w-fit"
+                                    : entry.payment_method.toLowerCase() === 'cash'
+                                    ? "bg-amber-500/15 text-amber-300 border-amber-500/30 text-xs font-medium px-2 py-0.5 flex items-center gap-1.5 w-fit"
+                                    : "bg-cyan-500/15 text-cyan-300 border-cyan-500/30 text-xs font-medium px-2 py-0.5 flex items-center gap-1.5 w-fit"
+                                }
+                              >
+                                {entry.payment_method.toLowerCase().includes('mpesa') || entry.payment_method.toLowerCase().includes('m-pesa') ? (
+                                  <>
+                                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-400"></span>
+                                    <span>M-Pesa</span>
+                                  </>
+                                ) : entry.payment_method.toLowerCase() === 'cash' ? (
+                                  <>
+                                    <span className="h-1.5 w-1.5 rounded-full bg-amber-400"></span>
+                                    <span>Cash</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <span className="h-1.5 w-1.5 rounded-full bg-cyan-400"></span>
+                                    <span>{entry.payment_method}</span>
+                                  </>
+                                )}
+                              </Badge>
+                            ) : entry.payment_terms ? (
+                              <span className="text-xs text-slate-400 font-mono">{entry.payment_terms}</span>
+                            ) : (
+                              <span className="text-xs text-slate-500">—</span>
+                            )}
                           </TableCell>
                           <TableCell>{getStatusBadge(entry.status)}</TableCell>
                           <TableCell className={`text-right font-bold ${entry.type === 'Income' && !['Void', 'Reversed'].includes(entry.status) ? 'text-emerald-400' : entry.type === 'Expense' ? 'text-rose-400' : 'text-slate-500 line-through'}`}>
@@ -479,9 +719,11 @@ const Financials = () => {
                           </TableCell>
                         </TableRow>
                       ))}
-                      {ledgerData.length === 0 && (
+                      {validLedgerEntries.length === 0 && (
                         <TableRow>
-                          <TableCell colSpan={6} className="text-center py-8 text-slate-500">No transactions found.</TableCell>
+                          <TableCell colSpan={7} className="text-center py-8 text-slate-500">
+                            {isFiltered ? 'No transactions found matching the selected filters.' : 'No transactions found.'}
+                          </TableCell>
                         </TableRow>
                       )}
                     </TableBody>
