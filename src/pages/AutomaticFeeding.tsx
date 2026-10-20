@@ -91,6 +91,7 @@ const formatQty = (n: number) => Number(n.toFixed(3)).toString();
 
 const AutomaticFeeding = () => {
   const [pondId, setPondId] = useState('POND_01');
+  const [pondData, setPondData] = useState<any>(null);
   const [telemetry, setTelemetry] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [savingSchedule, setSavingSchedule] = useState(false);
@@ -156,7 +157,7 @@ const AutomaticFeeding = () => {
     }
   }, [deductibleItems, selectedManualFeedId]);
 
-  // 2. Fetch pond configuration and active schedule string from 'ponds' collection
+  // 2. Fetch pond configuration, active schedule string, and real-time state from 'ponds' collection
   useEffect(() => {
     if (!pondId) return;
 
@@ -164,6 +165,7 @@ const AutomaticFeeding = () => {
     const unsubPond = onSnapshot(pondDocRef, (snap) => {
       if (snap.exists()) {
         const data = snap.data();
+        setPondData(data);
         if (data.feeder_config) {
           setConfig({ ...DEFAULT_CONFIG, ...data.feeder_config });
         }
@@ -172,6 +174,7 @@ const AutomaticFeeding = () => {
         }
         setLastManualFeed(data.last_manual_feed || null);
       } else {
+        setPondData(null);
         setLastManualFeed(null);
       }
     });
@@ -190,33 +193,72 @@ const AutomaticFeeding = () => {
       limit(1)
     );
 
-    const unsubTelemetry = onSnapshot(q, (snapshot) => {
-      if (!snapshot.empty) {
-        setTelemetry(snapshot.docs[0].data());
-      } else {
-        setTelemetry(null);
+    const unsubTelemetry = onSnapshot(
+      q,
+      (snapshot) => {
+        if (!snapshot.empty) {
+          const docData = snapshot.docs[0].data();
+          setTelemetry({
+            ...docData,
+            distance_cm: docData.distance_cm ?? docData.hopper_distance_cm,
+            feed_triggered: docData.feed_triggered ?? docData.feed_event ?? false
+          });
+        }
+      },
+      (error) => {
+        // Missing composite index in Firestore will fallback gracefully to pondData.last_telemetry
+        console.warn('Telemetry collection subscription warning (using pond snapshot fallback):', error);
       }
-    });
+    );
 
     return () => unsubTelemetry();
   }, [pondId]);
 
-  // Derived: Connection State based on 2-minute timeout & trigger_source
+  // Active telemetry: combines historical/real-time collection telemetry with the pond snapshot fallback
+  const activeTelemetry = useMemo(() => {
+    if (telemetry) return telemetry;
+    if (pondData?.last_telemetry) {
+      return {
+        ...pondData.last_telemetry,
+        created_at: pondData.last_telemetry.updated_at || pondData.updated_at
+      };
+    }
+    return null;
+  }, [telemetry, pondData]);
+
+  // Derived: Live Connection State based on 5-second polling heartbeat & telemetry trigger_source
   const deviceStatus = useMemo<'disconnected' | 'running' | 'idle'>(() => {
-    if (!telemetry?.created_at) return 'disconnected';
-    const lastPing = telemetry.created_at.toDate
-      ? telemetry.created_at.toDate().getTime()
-      : new Date(telemetry.created_at).getTime();
-    const isStale = Date.now() - lastPing > 2 * 60 * 1000;
+    // 1. Check live heartbeat timestamp from GET /status polling
+    const pingTime = pondData?.last_ping?.toDate
+      ? pondData.last_ping.toDate().getTime()
+      : (pondData?.last_ping_ms || 0);
+
+    // 2. Check telemetry timestamp
+    const telemetryTime = activeTelemetry?.created_at?.toDate
+      ? activeTelemetry.created_at.toDate().getTime()
+      : (activeTelemetry?.updated_at?.toDate
+        ? activeTelemetry.updated_at.toDate().getTime()
+        : 0);
+
+    const latestActiveTime = Math.max(pingTime, telemetryTime);
+
+    if (!latestActiveTime) return 'disconnected';
+
+    // 45-second heartbeat window (device polls every 5s; generous window for network variance)
+    const isStale = Date.now() - latestActiveTime > 45 * 1000;
     if (isStale) return 'disconnected';
-    if (telemetry.trigger_source === 'START') return 'running';
+
+    if (pondData?.feeder_state === 'spinning' || pondData?.motor_active === true || activeTelemetry?.trigger_source === 'START') {
+      return 'running';
+    }
+
     return 'idle';
-  }, [telemetry]);
+  }, [pondData, activeTelemetry]);
 
   // Derived: Hardware Action & Origin State (Protocol Table Logic & UI Mapping)
   const hardwareAction = useMemo(() => {
-    if (!telemetry) return null;
-    const source = String(telemetry.trigger_source || (telemetry.feed_triggered ? 'AUTO' : 'NONE')).toUpperCase();
+    if (!activeTelemetry) return null;
+    const source = String(activeTelemetry.trigger_source || (activeTelemetry.feed_triggered ? 'AUTO' : 'NONE')).toUpperCase();
     switch (source) {
       case 'START':
         return {
@@ -255,23 +297,24 @@ const AutomaticFeeding = () => {
           color: 'text-zinc-400 bg-zinc-500/10 border-zinc-500/20'
         };
     }
-  }, [telemetry]);
+  }, [activeTelemetry]);
 
-  // Derived: Feed Level Percentage and remaining weight
-  const { percentage: feedPercentage, remainingKg } = useMemo(() => {
-    if (!telemetry || telemetry.distance_cm === undefined) {
-      return { percentage: 0, remainingKg: 0 };
+  // Derived: Feed Level Percentage and remaining weight (with robust fallback for historical fields)
+  const { percentage: feedPercentage, remainingKg, sensorDistanceText } = useMemo(() => {
+    const rawDist = activeTelemetry?.distance_cm ?? activeTelemetry?.hopper_distance_cm;
+    if (rawDist === undefined || rawDist === null) {
+      return { percentage: 0, remainingKg: 0, sensorDistanceText: '--' };
     }
-    const dist = Number(telemetry.distance_cm);
+    const dist = Number(rawDist);
     const rawPct = ((config.hopperEmptyDistanceCm - dist) /
       (config.hopperEmptyDistanceCm - config.hopperFullDistanceCm)) * 100;
     const clamped = Math.max(0, Math.min(100, Math.round(rawPct)));
     const kg = Number(((clamped / 100) * config.hopperCapacityKg).toFixed(1));
-    return { percentage: clamped, remainingKg: kg };
-  }, [telemetry, config]);
+    return { percentage: clamped, remainingKg: kg, sensorDistanceText: `${dist.toFixed(1)} cm` };
+  }, [activeTelemetry, config]);
 
   // Derived: RSSI signal level and color
-  const rssiValue = telemetry?.rssi ?? -100;
+  const rssiValue = activeTelemetry?.rssi ?? -100;
   const signalBadge = useMemo(() => {
     if (deviceStatus === 'disconnected') return { label: 'Offline', color: 'text-zinc-500 bg-zinc-500/10' };
     if (rssiValue >= -75) return { label: `${rssiValue} dBm (Excellent)`, color: 'text-emerald-400 bg-emerald-500/10' };
@@ -282,7 +325,8 @@ const AutomaticFeeding = () => {
   // Build the Steve-compliant "Hour=DurationMs" string (e.g. "9=4000,13=6000,17=4000")
   const compiledScheduleStr = useMemo(() => {
     return schedules
-      .slice(0, 10) // Protocol supports up to 10 intervals[cite: 10]
+      .filter(s => s.hour > 0 && s.grams > 0)
+      .slice(0, 10)
       .sort((a, b) => a.hour - b.hour)
       .map(s => `${s.hour}=${s.durationMs}`)
       .join(',');
@@ -336,19 +380,17 @@ const AutomaticFeeding = () => {
     }
   };
 
-  // Add a new schedule slot
+  // Add a new schedule slot - explicitly initialized to 0 for time and weight
   const handleAddScheduleSlot = () => {
     if (schedules.length >= 10) {
       toast.error('Maximum 10 daily schedules allowed by hardware');
       return;
     }
-    const nextHour = schedules.length > 0 ? (schedules[schedules.length - 1].hour + 4) % 24 : 8;
-    const defaultGrams = 150;
     const newSlot: ScheduleSlot = {
       id: crypto.randomUUID(),
-      hour: nextHour,
-      grams: defaultGrams,
-      durationMs: Math.round(defaultGrams * msPerGram),
+      hour: 0, // Stays at 0 until user explicitly selects a time
+      grams: 0, // Stays at 0 until user explicitly enters a weight
+      durationMs: 0,
       feedInventoryId: deductibleItems[0]?.id || '',
       feedName: deductibleItems[0]?.name || ''
     };
@@ -379,11 +421,40 @@ const AutomaticFeeding = () => {
   // Save full schedule and configuration to Firestore
   const handleSaveAll = async () => {
     if (!pondId) return;
-    const invalidSlot = schedules.find(s => !deductibleItems.some(i => i.id === s.feedInventoryId));
-    if (invalidSlot) {
-      toast.error(`The ${String(invalidSlot.hour).padStart(2, '0')}:00 slot needs a valid kg/g feed item from inventory`);
+
+    if (schedules.length === 0) {
+      toast.error('Please add at least one feeding interval before deploying');
       return;
     }
+
+    // Validation: Require user to update time and weight from 0
+    for (const slot of schedules) {
+      if (slot.hour === 0 && slot.grams <= 0) {
+        toast.error('Please update the time and weight from 0 before deploying schedule');
+        return;
+      }
+      if (slot.hour === 0) {
+        toast.error('Please select a scheduled time (cannot be left at 00:00)');
+        return;
+      }
+      if (slot.grams <= 0) {
+        toast.error(`Please enter a feed weight greater than 0g for the ${String(slot.hour).padStart(2, '0')}:00 slot`);
+        return;
+      }
+      if (!deductibleItems.some(i => i.id === slot.feedInventoryId)) {
+        toast.error(`The ${String(slot.hour).padStart(2, '0')}:00 slot needs a valid kg/g feed item from inventory`);
+        return;
+      }
+    }
+
+    // Check for duplicate hours
+    const hours = schedules.map(s => s.hour);
+    const duplicateHour = hours.find((h, idx) => hours.indexOf(h) !== idx);
+    if (duplicateHour !== undefined) {
+      toast.error(`Duplicate time slot found for ${String(duplicateHour).padStart(2, '0')}:00. Each daily interval must have a unique time.`);
+      return;
+    }
+
     setSavingSchedule(true);
     try {
       const pondRef = doc(db, 'ponds', pondId);
@@ -470,7 +541,7 @@ const AutomaticFeeding = () => {
             </div>
             <div className="text-right font-mono text-xs text-muted-foreground">
               <span>Sensor: </span>
-              <span className="text-foreground font-bold">{telemetry ? `${telemetry.distance_cm} cm` : '--'}</span>
+              <span className="text-foreground font-bold">{sensorDistanceText}</span>
             </div>
           </div>
 
@@ -782,13 +853,17 @@ const AutomaticFeeding = () => {
                   <select
                     value={slot.hour}
                     onChange={(e) => handleUpdateSlot(slot.id, 'hour', Number(e.target.value))}
-                    className="w-full bg-background border border-border rounded px-2 py-1.5 text-xs font-mono font-bold"
+                    className={`w-full bg-background border rounded px-2 py-1.5 text-xs font-mono font-bold ${slot.hour === 0 ? 'border-amber-500/70 text-amber-400 bg-amber-500/5' : 'border-border'}`}
                   >
-                    {Array.from({ length: 24 }).map((_, h) => (
-                      <option key={h} value={h}>
-                        {h.toString().padStart(2, '0')}:00
-                      </option>
-                    ))}
+                    <option value={0}>00:00 (Set Time)</option>
+                    {Array.from({ length: 23 }).map((_, i) => {
+                      const h = i + 1;
+                      return (
+                        <option key={h} value={h}>
+                          {h.toString().padStart(2, '0')}:00
+                        </option>
+                      );
+                    })}
                   </select>
                 </div>
 
@@ -798,9 +873,11 @@ const AutomaticFeeding = () => {
                   <Input
                     type="number"
                     step={10}
-                    value={slot.grams}
-                    onChange={(e) => handleUpdateSlot(slot.id, 'grams', Number(e.target.value))}
-                    className="h-8 text-xs font-mono"
+                    min={0}
+                    value={slot.grams === 0 ? '' : slot.grams}
+                    placeholder="0"
+                    onChange={(e) => handleUpdateSlot(slot.id, 'grams', Number(e.target.value) || 0)}
+                    className={`h-8 text-xs font-mono ${slot.grams <= 0 ? 'border-amber-500/70 text-amber-400 bg-amber-500/5' : ''}`}
                   />
                 </div>
 
