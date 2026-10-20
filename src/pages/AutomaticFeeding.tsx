@@ -1,6 +1,7 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { db } from '@/lib/firebase';
 import { useData } from '@/contexts/DataContext';
+import { useAuth } from '@/contexts/AuthContext';
 import {
   collection,
   query,
@@ -29,7 +30,9 @@ import {
   Settings2,
   Package,
   Save,
-  Radio
+  Radio,
+  RotateCcw,
+  X
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -75,6 +78,7 @@ interface ManualFeedState {
   feed_inventory_id?: string;
   feed_name?: string;
   final_distance_cm?: number;
+  already_deducted?: boolean;
   deduction?: { deducted: boolean; change?: number; unit?: string; reason?: string; insufficient_stock?: boolean };
 }
 
@@ -107,11 +111,18 @@ const AutomaticFeeding = () => {
   const [selectedManualFeedId, setSelectedManualFeedId] = useState<string>('');
   const [lastManualFeed, setLastManualFeed] = useState<ManualFeedState | null>(null);
 
-  // Schedules state
+  // Schedules state & dirty tracking: keeps user edits on screen so ESP32 heartbeats don't wipe them
   const [schedules, setSchedules] = useState<ScheduleSlot[]>([]);
+  const [isScheduleDirty, setIsScheduleDirty] = useState(false);
+  const isScheduleDirtyRef = useRef(false);
 
-  // Inventory state: live from the shared Firestore listener (same source as the Inventory page)
-  const { inventory } = useData();
+  // Physical button notification dismiss state
+  const [dismissedButtonTs, setDismissedButtonTs] = useState<number | null>(null);
+
+  // Global Context & Auth for Inventory & Admin Logs
+  const { user } = useAuth();
+  const { inventory, updateInventory, addLog } = useData();
+
   const inventoryItems = useMemo<FeedOption[]>(() => {
     return inventory
       .map(item => {
@@ -157,6 +168,12 @@ const AutomaticFeeding = () => {
     }
   }, [deductibleItems, selectedManualFeedId]);
 
+  // Reset dirty status when switching target ponds
+  useEffect(() => {
+    isScheduleDirtyRef.current = false;
+    setIsScheduleDirty(false);
+  }, [pondId]);
+
   // 2. Fetch pond configuration, active schedule string, and real-time state from 'ponds' collection
   useEffect(() => {
     if (!pondId) return;
@@ -170,7 +187,11 @@ const AutomaticFeeding = () => {
           setConfig({ ...DEFAULT_CONFIG, ...data.feeder_config });
         }
         if (Array.isArray(data.schedules)) {
-          setSchedules(data.schedules);
+          // CRITICAL: Only overwrite local schedules from Firestore if the user has NOT made unsaved changes.
+          // This prevents ESP32 5-second polling pings from wiping newly added intervals before the user deploys.
+          if (!isScheduleDirtyRef.current) {
+            setSchedules(data.schedules);
+          }
         }
         setLastManualFeed(data.last_manual_feed || null);
       } else {
@@ -225,6 +246,17 @@ const AutomaticFeeding = () => {
     }
     return null;
   }, [telemetry, pondData]);
+
+  // Physical Button Press Detection & Timestamp
+  const buttonFeedTime = useMemo(() => {
+    if (!pondData?.last_button_feed?.timestamp) return null;
+    const ts = pondData.last_button_feed.timestamp;
+    return ts.toDate ? ts.toDate().getTime() : new Date(ts).getTime();
+  }, [pondData?.last_button_feed]);
+
+  const showButtonBanner = Boolean(
+    buttonFeedTime && (!dismissedButtonTs || buttonFeedTime > dismissedButtonTs)
+  );
 
   // Derived: Live Connection State based on 5-second polling heartbeat & telemetry trigger_source
   const deviceStatus = useMemo<'disconnected' | 'running' | 'idle'>(() => {
@@ -336,7 +368,7 @@ const AutomaticFeeding = () => {
   const manualInsufficient = !!selectedManualFeed && manualGramsEstimate > selectedManualFeed.availableGrams;
   const manualPending = lastManualFeed?.status === 'queued';
 
-  // Handle manual trigger feed
+  // Handle manual trigger feed: Deducts inventory immediately and writes an entry to Admin Logs
   const handleTriggerFeed = async () => {
     if (!pondId) return;
     if (!selectedManualFeed || !selectedManualFeed.gramsPerUnit) {
@@ -354,24 +386,69 @@ const AutomaticFeeding = () => {
     setLoading(true);
     try {
       const pondRef = doc(db, 'ponds', pondId);
+      const requestId = crypto.randomUUID();
+      const amountInUnit = Number((manualGramsEstimate / selectedManualFeed.gramsPerUnit).toFixed(3));
 
-      // Queue the command. The server hands CMD:FEED + requested_ms to the gateway on GET /status
-      // and deducts inventory at that moment, so stock only drops when the feeder actually runs.
-      // calibration_ms is intentionally NOT overwritten here – it is the saved fallback duration.
+      // 1. Immediately deduct from inventory so that the web app reflects the change right away
+      await updateInventory(
+        selectedManualFeed.id,
+        -amountInUnit,
+        `Feeder [Web App Manual Drop] – ${pondId}: ${manualGramsEstimate}g`
+      );
+
+      // 2. Queue command for ESP32 with already_deducted: true to prevent double-deduction on uplink
       await setDoc(pondRef, {
-        pending_command: 'CMD:FEED', // Exactly as expected by Steve's ESP32 handshake
+        pending_command: 'CMD:FEED',
         last_manual_feed: {
-          request_id: crypto.randomUUID(),
+          request_id: requestId,
           status: 'queued',
           requested_ms: manualMs,
           estimated_grams: manualGramsEstimate,
           feed_inventory_id: selectedManualFeed.id,
           feed_name: selectedManualFeed.name,
-          timestamp: serverTimestamp()
+          timestamp: serverTimestamp(),
+          already_deducted: true,
+          deducted_change: -amountInUnit,
+          deducted_unit: selectedManualFeed.unit
         }
       }, { mergeFields: ['pending_command', 'last_manual_feed'] });
 
-      toast.success(`Feed queued: ${manualGramsEstimate} g (${manualMs} ms). Inventory deducts when the feeder picks it up.`);
+      // 3. Record feed event so telemetry uplink knows this request was already deducted
+      await setDoc(doc(db, 'feed_events', `${pondId}_manual_${requestId}`), {
+        pond_id: pondId,
+        trigger: 'manual',
+        source: 'Web_App',
+        grams: manualGramsEstimate,
+        inventory_id: selectedManualFeed.id,
+        item_name: selectedManualFeed.name,
+        unit: selectedManualFeed.unit,
+        change: -amountInUnit,
+        deducted: true,
+        created_at: serverTimestamp()
+      }, { merge: true });
+
+      // 4. Log action to Admin Logs
+      await addLog({
+        technician_id: user?.id || 'feeder_web',
+        technician_name: user?.name ? `${user.name} (Feeder)` : `Automated Feeder (${pondId})`,
+        animal_type: 'Fish',
+        event_type: 'Feeding',
+        data: {
+          ponds: [pondId],
+          metrics: { feed_amount: `${manualGramsEstimate}g`, average_weight_g: null, water_parameters: null },
+          feed_used: selectedManualFeed.id,
+          feed_name: selectedManualFeed.name,
+          feed_amount: `${manualGramsEstimate}g`,
+          runtime_ms: manualMs,
+          trigger: 'manual',
+          source: 'Web_App',
+          notes: `Instant feed triggered from feeder controller for ${pondId}. Deducted ${amountInUnit} ${selectedManualFeed.unit} of ${selectedManualFeed.name}.`,
+          original_text: `[Web Manual Feed]: Pond=${pondId}, Trigger=Web App Manual Drop, Amount=${manualGramsEstimate}g (${manualMs}ms)`,
+          description: `Instant feed triggered: ${manualGramsEstimate}g (${manualMs}ms) to ${pondId}`
+        }
+      });
+
+      toast.success(`Feed dispatched: ${manualGramsEstimate}g (${manualMs}ms). Deducted ${amountInUnit} ${selectedManualFeed.unit} from inventory.`);
     } catch (err) {
       console.error(err);
       toast.error('Failed to dispatch manual feed');
@@ -394,11 +471,15 @@ const AutomaticFeeding = () => {
       feedInventoryId: deductibleItems[0]?.id || '',
       feedName: deductibleItems[0]?.name || ''
     };
+    isScheduleDirtyRef.current = true;
+    setIsScheduleDirty(true);
     setSchedules([...schedules, newSlot]);
   };
 
   // Update specific schedule slot
   const handleUpdateSlot = (id: string, field: 'hour' | 'grams' | 'feedInventoryId', value: any) => {
+    isScheduleDirtyRef.current = true;
+    setIsScheduleDirty(true);
     setSchedules(prev => prev.map(slot => {
       if (slot.id !== id) return slot;
       const updated = { ...slot, [field]: value };
@@ -415,10 +496,24 @@ const AutomaticFeeding = () => {
 
   // Delete schedule slot
   const handleDeleteSlot = (id: string) => {
+    isScheduleDirtyRef.current = true;
+    setIsScheduleDirty(true);
     setSchedules(prev => prev.filter(s => s.id !== id));
   };
 
-  // Save full schedule and configuration to Firestore
+  // Discard unsaved schedule edits and revert back to what is stored in Firestore
+  const handleDiscardChanges = () => {
+    if (pondData && Array.isArray(pondData.schedules)) {
+      setSchedules(pondData.schedules);
+    } else {
+      setSchedules([]);
+    }
+    isScheduleDirtyRef.current = false;
+    setIsScheduleDirty(false);
+    toast.info('Discarded unsaved schedule changes');
+  };
+
+  // Save full schedule and configuration to Firestore and log to Admin Logs
   const handleSaveAll = async () => {
     if (!pondId) return;
 
@@ -459,12 +554,42 @@ const AutomaticFeeding = () => {
     try {
       const pondRef = doc(db, 'ponds', pondId);
       await setDoc(pondRef, {
-        schedule_str: compiledScheduleStr || null, // Flat string for Steve's GET downlink[cite: 10]
-        calibration_ms: config.calibrationMs,       // Safety fallback motor duration[cite: 10, 11]
+        schedule_str: compiledScheduleStr || null, // Flat string for Steve's GET downlink
+        calibration_ms: config.calibrationMs,       // Safety fallback motor duration
         feeder_config: config,
         schedules: schedules,
         updated_at: new Date()
       }, { merge: true });
+
+      // Log to Admin Logs
+      await addLog({
+        technician_id: user?.id || 'feeder_web',
+        technician_name: user?.name ? `${user.name} (Feeder)` : `Admin (${pondId})`,
+        animal_type: 'Fish',
+        event_type: 'Feeding Schedule',
+        data: {
+          ponds: [pondId],
+          schedule_str: compiledScheduleStr,
+          total_slots: schedules.length,
+          schedules: schedules.map(s => ({
+            hour: s.hour,
+            time: `${String(s.hour).padStart(2, '0')}:00`,
+            grams: s.grams,
+            durationMs: s.durationMs,
+            feedName: s.feedName || 'Standard Feed'
+          })),
+          calibration_ms: config.calibrationMs,
+          dispense_rate_gps: config.dispenseRateGps,
+          source: 'Web_App',
+          notes: `Autonomous feeding schedule deployed for ${pondId} with ${schedules.length} intervals (${compiledScheduleStr}).`,
+          original_text: `[Schedule Deployed]: Pond=${pondId}, Slots=${schedules.length}, String="${compiledScheduleStr}"`,
+          description: `Deployed ${schedules.length} feeding schedule intervals for ${pondId}`
+        }
+      });
+
+      // Clear dirty flag so subsequent external updates are allowed
+      isScheduleDirtyRef.current = false;
+      setIsScheduleDirty(false);
 
       toast.success('Schedule & calibration committed to gateway downlink');
     } catch (err) {
@@ -524,6 +649,51 @@ const AutomaticFeeding = () => {
           </div>
         </div>
       </div>
+
+      {/* Physical Feeder Button Notification Banner */}
+      {showButtonBanner && pondData?.last_button_feed && (
+        <div className="bg-purple-950/40 border border-purple-500/50 p-4 rounded-xl flex items-start sm:items-center justify-between gap-4 shadow-sm animate-in fade-in duration-300">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-full bg-purple-500/20 text-purple-400 flex items-center justify-center font-bold text-xs shrink-0 border border-purple-500/30">
+              BTN
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-sm text-purple-200">
+                  Physical Feeder Button Pressed
+                </span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30 font-semibold">
+                  Hardware Feeder Action
+                </span>
+              </div>
+              <p className="text-xs text-purple-300/80 mt-0.5">
+                Feeder dispensed <span className="font-bold text-foreground font-mono">{pondData.last_button_feed.grams}g</span> of{' '}
+                <span className="font-semibold text-purple-200">{pondData.last_button_feed.feed_name || 'Standard Feed'}</span> directly from pond hardware.
+                {pondData.last_button_feed.distance_cm !== undefined && (
+                  <span> · Sensor distance: <span className="font-mono font-bold text-foreground">{pondData.last_button_feed.distance_cm} cm</span></span>
+                )}
+                {buttonFeedTime && (
+                  <span> · {new Date(buttonFeedTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
+                )}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="text-[11px] font-mono px-2 py-1 rounded bg-purple-500/10 text-purple-300 border border-purple-500/20">
+              {pondData.last_button_feed.deducted ? '✓ Inventory Deducted' : 'Feed Logged'}
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setDismissedButtonTs(buttonFeedTime)}
+              className="h-7 w-7 p-0 text-purple-300 hover:text-purple-100 hover:bg-purple-500/20"
+              title="Dismiss notification"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Primary Telemetry Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -799,14 +969,33 @@ const AutomaticFeeding = () => {
       <div className="bg-card border border-border p-6 rounded-xl space-y-6">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
           <div>
-            <h2 className="text-base font-bold text-foreground flex items-center gap-2">
-              <Clock className="h-4 w-4 text-teal-400" /> Autonomous RTC Schedule
-            </h2>
-            <p className="text-xs text-muted-foreground">
+            <div className="flex items-center gap-2">
+              <h2 className="text-base font-bold text-foreground flex items-center gap-2">
+                <Clock className="h-4 w-4 text-teal-400" /> Autonomous RTC Schedule
+              </h2>
+              {isScheduleDirty && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/30">
+                  <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse" />
+                  Unsaved Changes
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground mt-0.5">
               Node A's RTC triggers motor automatically in 24-hr intervals (Max 10 per day). Inventory deducts when the feeder confirms each drop.
             </p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex items-center gap-2">
+            {isScheduleDirty && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleDiscardChanges}
+                disabled={savingSchedule}
+                className="text-xs gap-1 text-muted-foreground hover:text-rose-400"
+              >
+                <RotateCcw className="h-3.5 w-3.5" /> Discard
+              </Button>
+            )}
             <Button
               variant="outline"
               size="sm"
@@ -820,7 +1009,7 @@ const AutomaticFeeding = () => {
               size="sm"
               onClick={handleSaveAll}
               disabled={savingSchedule}
-              className="bg-teal-500 hover:bg-teal-600 text-zinc-950 font-bold text-xs gap-1"
+              className={`font-bold text-xs gap-1 transition ${isScheduleDirty ? 'bg-amber-500 hover:bg-amber-600 text-zinc-950 shadow-md shadow-amber-500/20' : 'bg-teal-500 hover:bg-teal-600 text-zinc-950'}`}
             >
               <Save className="h-3.5 w-3.5" /> {savingSchedule ? 'Saving...' : 'Deploy Schedule'}
             </Button>
