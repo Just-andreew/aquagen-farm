@@ -203,31 +203,49 @@ const AutomaticFeeding = () => {
     return () => unsubPond();
   }, [pondId]);
 
+  // Helper to safely parse any Firestore timestamp / ISO string / epoch ms / seconds object
+  const parseTimestampMs = (val: any): number => {
+    if (!val) return 0;
+    if (typeof val === 'number') return val;
+    if (typeof val.toDate === 'function') return val.toDate().getTime();
+    if (val.seconds) return val.seconds * 1000;
+    if (val._seconds) return val._seconds * 1000;
+    const parsed = new Date(val).getTime();
+    return isNaN(parsed) ? 0 : parsed;
+  };
+
   // 3. Listen to latest telemetry from 'feeder_telemetry'
   useEffect(() => {
     if (!pondId) return;
 
+    // Use single-field ordering by created_at to avoid requiring a composite Firestore index,
+    // then match pond_id in memory.
     const q = query(
       collection(db, 'feeder_telemetry'),
-      where('pond_id', '==', pondId),
       orderBy('created_at', 'desc'),
-      limit(1)
+      limit(20)
     );
 
     const unsubTelemetry = onSnapshot(
       q,
       (snapshot) => {
         if (!snapshot.empty) {
-          const docData = snapshot.docs[0].data();
-          setTelemetry({
-            ...docData,
-            distance_cm: docData.distance_cm ?? docData.hopper_distance_cm,
-            feed_triggered: docData.feed_triggered ?? docData.feed_event ?? false
+          const match = snapshot.docs.find(d => {
+            const data = d.data();
+            return String(data.pond_id || '').toUpperCase() === pondId;
           });
+          if (match) {
+            const docData = match.data();
+            setTelemetry({
+              ...docData,
+              distance_cm: docData.distance_cm ?? docData.hopper_distance_cm,
+              feed_triggered: docData.feed_triggered ?? docData.feed_event ?? false
+            });
+          }
         }
       },
       (error) => {
-        // Missing composite index in Firestore will fallback gracefully to pondData.last_telemetry
+        // Fallback gracefully to pondData.last_telemetry if collection subscription fails
         console.warn('Telemetry collection subscription warning (using pond snapshot fallback):', error);
       }
     );
@@ -247,37 +265,42 @@ const AutomaticFeeding = () => {
     return null;
   }, [telemetry, pondData]);
 
-  // Physical Button Press Detection & Timestamp
+  // Physical Button Press Detection & Timestamp:
+  // Only show the alert banner if the button event occurred recently (within 15 minutes),
+  // preventing historical button feeds from showing as permanent alert banners across page reloads.
   const buttonFeedTime = useMemo(() => {
     if (!pondData?.last_button_feed?.timestamp) return null;
-    const ts = pondData.last_button_feed.timestamp;
-    return ts.toDate ? ts.toDate().getTime() : new Date(ts).getTime();
+    return parseTimestampMs(pondData.last_button_feed.timestamp);
   }, [pondData?.last_button_feed]);
 
+  const isButtonFeedRecent = Boolean(
+    buttonFeedTime && (Date.now() - buttonFeedTime < 15 * 60 * 1000)
+  );
+
   const showButtonBanner = Boolean(
-    buttonFeedTime && (!dismissedButtonTs || buttonFeedTime > dismissedButtonTs)
+    isButtonFeedRecent && (!dismissedButtonTs || buttonFeedTime! > dismissedButtonTs)
   );
 
   // Derived: Live Connection State based on 5-second polling heartbeat & telemetry trigger_source
   const deviceStatus = useMemo<'disconnected' | 'running' | 'idle'>(() => {
     // 1. Check live heartbeat timestamp from GET /status polling
-    const pingTime = pondData?.last_ping?.toDate
-      ? pondData.last_ping.toDate().getTime()
-      : (pondData?.last_ping_ms || 0);
+    const pingTime = Math.max(
+      parseTimestampMs(pondData?.last_ping),
+      Number(pondData?.last_ping_ms) || 0
+    );
 
     // 2. Check telemetry timestamp
-    const telemetryTime = activeTelemetry?.created_at?.toDate
-      ? activeTelemetry.created_at.toDate().getTime()
-      : (activeTelemetry?.updated_at?.toDate
-        ? activeTelemetry.updated_at.toDate().getTime()
-        : 0);
+    const telemetryTime = Math.max(
+      parseTimestampMs(activeTelemetry?.created_at),
+      parseTimestampMs(activeTelemetry?.updated_at)
+    );
 
     const latestActiveTime = Math.max(pingTime, telemetryTime);
 
     if (!latestActiveTime) return 'disconnected';
 
-    // 45-second heartbeat window (device polls every 5s; generous window for network variance)
-    const isStale = Date.now() - latestActiveTime > 45 * 1000;
+    // 90-second heartbeat window (device polls every 5s; generous window for network variance & sleep)
+    const isStale = Date.now() - latestActiveTime > 90 * 1000;
     if (isStale) return 'disconnected';
 
     if (pondData?.feeder_state === 'spinning' || pondData?.motor_active === true || activeTelemetry?.trigger_source === 'START') {
@@ -920,11 +943,11 @@ const AutomaticFeeding = () => {
 
           <Button
             onClick={handleTriggerFeed}
-            disabled={loading || deviceStatus === 'disconnected' || !selectedManualFeed || manualInsufficient}
-            className="w-full bg-teal-500 hover:bg-teal-600 text-zinc-950 font-bold py-5 text-sm gap-2"
+            disabled={loading || !selectedManualFeed || manualInsufficient}
+            className={`w-full font-bold py-5 text-sm gap-2 transition ${deviceStatus === 'disconnected' ? 'bg-amber-500 hover:bg-amber-600 text-zinc-950' : 'bg-teal-500 hover:bg-teal-600 text-zinc-950'}`}
           >
             <RefreshCw className={`h-4 w-4 ${loading || manualPending ? 'animate-spin' : ''}`} />
-            {loading ? 'Queuing...' : `Trigger Feed (${manualMs} ms)`}
+            {loading ? 'Queuing...' : deviceStatus === 'disconnected' ? `Queue Cloud Feed (${manualMs} ms)` : `Trigger Feed (${manualMs} ms)`}
           </Button>
         </div>
 
