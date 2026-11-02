@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { collection, addDoc, getDocs, doc, updateDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '@/lib/firebase';
-import { createInvoiceTransaction } from '@/lib/firebase/transactions';
+import { createInvoiceTransaction, approveInvoiceTransaction } from '@/lib/firebase/transactions';
 import { useAuth } from '@/contexts/AuthContext';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
@@ -55,6 +55,7 @@ const Financials = () => {
 
   // --- STATE: VOID INVOICE MODAL ---
   const [voidInvoiceId, setVoidInvoiceId] = useState<string | null>(null);
+  const [voidTargetType, setVoidTargetType] = useState<'Income' | 'Expense'>('Income');
   const [isVoidModalOpen, setIsVoidModalOpen] = useState(false);
 
   // --- STATE: EDIT DRAFT MODAL ---
@@ -70,6 +71,7 @@ const Financials = () => {
   const [posQty, setPosQty] = useState(1);
   const [posPrice, setPosPrice] = useState(0);
   const [posPayment, setPosPayment] = useState('Cash');
+  const [posClient, setPosClient] = useState('');
 
   // --- STATE: B2B INVOICE ---
   const [b2bClient, setB2bClient] = useState('');
@@ -175,13 +177,13 @@ const Financials = () => {
   // --- COMPUTED METRICS (DRIVEN BY FILTERED DATA) ---
   const totalRevenue = useMemo(() => {
     return filteredLedgerData
-      .filter(entry => entry.type === 'Income' && !['Void', 'Reversed'].includes(entry.status))
+      .filter(entry => entry.type === 'Income' && !['Void', 'Reversed', 'Draft'].includes(entry.status))
       .reduce((acc, curr) => acc + curr.amount, 0);
   }, [filteredLedgerData]);
 
   const totalExpenses = useMemo(() => {
     return filteredLedgerData
-      .filter(entry => entry.type === 'Expense' && !['Void', 'Reversed'].includes(entry.status))
+      .filter(entry => entry.type === 'Expense' && !['Void', 'Reversed', 'Draft'].includes(entry.status))
       .reduce((acc, curr) => acc + curr.amount, 0);
   }, [filteredLedgerData]);
 
@@ -287,19 +289,29 @@ const Financials = () => {
       return toast.error("Please fill all fields correctly.");
     }
     try {
-      const status = posPayment === 'Credit' ? 'Pending' : 'Paid';
-      await createInvoiceTransaction({
+      const isCredit = posPayment === 'Credit';
+      const status = isCredit ? 'Draft' : 'Paid';
+      const payload: Record<string, any> = {
         type: 'POS',
         category: posCategory,
         quantity: posQty,
         unit_price: posPrice,
         amount: posQty * posPrice,
+        total: posQty * posPrice,
         payment_method: posPayment,
         status: status,
         user_id: user?.id,
-      });
-      toast.success("POS Sale recorded successfully!");
-      setPosCategory(''); setPosQty(1); setPosPrice(0); setPosPayment('Cash');
+      };
+      if (isCredit && posClient.trim()) {
+        payload.client_name = posClient.trim();
+      }
+      await createInvoiceTransaction(payload);
+      toast.success(
+        isCredit
+          ? "Credit POS sale saved to Sales Drafts for approval!"
+          : "POS Sale recorded successfully!"
+      );
+      setPosCategory(''); setPosQty(1); setPosPrice(0); setPosPayment('Cash'); setPosClient('');
       fetchLedger();
     } catch (error: any) {
       toast.error(error.message || "Failed to record sale.");
@@ -396,12 +408,13 @@ const Financials = () => {
   const confirmVoid = async () => {
     if (!voidInvoiceId) return;
     try {
-      await updateDoc(doc(db, 'sales', voidInvoiceId), { status: 'Void' });
-      toast.success("Invoice voided successfully");
+      const collectionName = voidTargetType === 'Expense' ? 'expenses' : 'sales';
+      await updateDoc(doc(db, collectionName, voidInvoiceId), { status: 'Void' });
+      toast.success(`${voidTargetType === 'Expense' ? 'Expense' : 'Invoice'} voided successfully`);
       fetchLedger();
     } catch (error: any) {
       console.error(error);
-      toast.error("Failed to void invoice. You might lack permissions.");
+      toast.error("Failed to void entry. You might lack permissions.");
     } finally {
       setVoidInvoiceId(null);
       setIsVoidModalOpen(false);
@@ -410,8 +423,11 @@ const Financials = () => {
 
   const confirmApprove = async (id: string, type: string) => {
     try {
-      const collectionName = type === 'Expense' ? 'expenses' : 'sales';
-      await updateDoc(doc(db, collectionName, id), { status: 'Paid' });
+      if (type === 'Expense') {
+        await updateDoc(doc(db, 'expenses', id), { status: 'Paid' });
+      } else {
+        await approveInvoiceTransaction(id);
+      }
       toast.success("Draft approved successfully!");
       fetchLedger();
     } catch (error: any) {
@@ -711,7 +727,7 @@ const Financials = () => {
                                 variant="outline" 
                                 size="sm" 
                                 className="border-red-500/30 text-red-400 hover:bg-red-500 hover:text-white"
-                                onClick={() => { setVoidInvoiceId(entry.id); setIsVoidModalOpen(true); }}
+                                onClick={() => { setVoidInvoiceId(entry.id); setVoidTargetType('Income'); setIsVoidModalOpen(true); }}
                               >
                                 Void
                               </Button>
@@ -777,6 +793,17 @@ const Financials = () => {
                     </SelectContent>
                   </Select>
                 </div>
+                {posPayment === 'Credit' && (
+                  <div className="space-y-2">
+                    <Label className="text-[#94A3B8]">Client Name (Optional)</Label>
+                    <Input
+                      placeholder="e.g. Walk-in Credit Customer"
+                      value={posClient}
+                      onChange={(e) => setPosClient(e.target.value)}
+                      className="bg-[#014D4D] border-[#14B8A6]/30 text-white"
+                    />
+                  </div>
+                )}
                 <div className="pt-4 border-t border-[#14B8A6]/20 flex justify-between items-center">
                   <span className="text-[#94A3B8]">Total:</span>
                   <span className="text-2xl font-bold text-[#5EEAD4]">KES {(posQty * posPrice).toLocaleString()}</span>
@@ -927,7 +954,7 @@ const Financials = () => {
 
         {/* --- TAB 4: DRAFTS --- */}
         <TabsContent value="drafts" className="mt-6">
-          <Tabs defaultValue="purchases_drafts" className="w-full">
+          <Tabs defaultValue="sales_drafts" className="w-full">
             <TabsList className="bg-[#014D4D] border border-[#14B8A6]/30 mb-6">
               <TabsTrigger value="sales_drafts" className="data-[state=active]:bg-[#5EEAD4] data-[state=active]:text-[#013333]">Sales Drafts</TabsTrigger>
               <TabsTrigger value="purchases_drafts" className="data-[state=active]:bg-[#5EEAD4] data-[state=active]:text-[#013333]">Purchases Drafts</TabsTrigger>
@@ -937,7 +964,7 @@ const Financials = () => {
               <Card className="bg-[#013333] border-[#14B8A6]/20">
                 <CardHeader>
                   <CardTitle className="text-[#5EEAD4] flex items-center gap-2"><DollarSign className="h-5 w-5"/> Sales Drafts (AR)</CardTitle>
-                  <CardDescription className="text-[#94A3B8]">Pending sales invoices awaiting finalization.</CardDescription>
+                  <CardDescription className="text-[#94A3B8]">Pending sales invoices and credit POS transactions awaiting finalization.</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="rounded-md border border-[#14B8A6]/20 overflow-hidden">
@@ -946,6 +973,7 @@ const Financials = () => {
                         <TableRow className="border-[#14B8A6]/20 hover:bg-transparent">
                           <TableHead className="text-[#14B8A6]">Date</TableHead>
                           <TableHead className="text-[#14B8A6]">Category</TableHead>
+                          <TableHead className="text-[#14B8A6]">Payment / Client</TableHead>
                           <TableHead className="text-[#14B8A6]">Status</TableHead>
                           <TableHead className="text-[#14B8A6] text-right">Amount (KES)</TableHead>
                           <TableHead className="text-[#14B8A6] text-right">Actions</TableHead>
@@ -956,6 +984,16 @@ const Financials = () => {
                           <TableRow key={entry.id} className="border-[#14B8A6]/10 hover:bg-[#14B8A6]/5">
                             <TableCell className="text-slate-300">{new Date(entry.date).toLocaleDateString()}</TableCell>
                             <TableCell className="text-slate-300">{entry.category}</TableCell>
+                            <TableCell className="text-slate-300">
+                              <div className="flex flex-col gap-0.5">
+                                {entry.client_name && (
+                                  <span className="text-xs text-slate-200 font-medium">{entry.client_name}</span>
+                                )}
+                                <span className="text-xs text-slate-400">
+                                  {entry.payment_method || entry.payment_terms || '—'}
+                                </span>
+                              </div>
+                            </TableCell>
                             <TableCell>{getStatusBadge(entry.status)}</TableCell>
                             <TableCell className="text-right font-bold text-emerald-400">+{entry.amount.toLocaleString()}</TableCell>
                             <TableCell className="text-right flex justify-end gap-2">
@@ -972,6 +1010,14 @@ const Financials = () => {
                               <Button variant="outline" size="sm" className="border-[#14B8A6]/30 text-[#14B8A6] hover:bg-[#14B8A6]/10" onClick={() => handleEditDraft(entry)}>
                                 <Edit2 className="w-3 h-3 mr-1" /> Edit
                               </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="border-red-500/30 text-red-400 hover:bg-red-500 hover:text-white"
+                                onClick={() => { setVoidInvoiceId(entry.id); setVoidTargetType('Income'); setIsVoidModalOpen(true); }}
+                              >
+                                Void
+                              </Button>
                               <Button variant="outline" size="sm" className="border-[#14B8A6]/30 text-[#14B8A6] hover:bg-[#14B8A6] hover:text-[#013333]" onClick={() => confirmApprove(entry.id, entry.type)}>
                                 Approve
                               </Button>
@@ -980,7 +1026,7 @@ const Financials = () => {
                         ))}
                         {ledgerData.filter(e => e.type === 'Income' && e.status === 'Draft').length === 0 && (
                           <TableRow>
-                            <TableCell colSpan={5} className="text-center py-8 text-slate-500">No sales drafts found.</TableCell>
+                            <TableCell colSpan={6} className="text-center py-8 text-slate-500">No sales drafts found.</TableCell>
                           </TableRow>
                         )}
                       </TableBody>
@@ -1019,6 +1065,14 @@ const Financials = () => {
                               <Button variant="outline" size="sm" className="border-[#14B8A6]/30 text-[#14B8A6] hover:bg-[#14B8A6]/10" onClick={() => handleEditDraft(entry)}>
                                 <Edit2 className="w-3 h-3 mr-1" /> Edit
                               </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="border-red-500/30 text-red-400 hover:bg-red-500 hover:text-white"
+                                onClick={() => { setVoidInvoiceId(entry.id); setVoidTargetType('Expense'); setIsVoidModalOpen(true); }}
+                              >
+                                Void
+                              </Button>
                               <Button variant="outline" size="sm" className="border-[#14B8A6]/30 text-[#14B8A6] hover:bg-[#14B8A6] hover:text-[#013333]" onClick={() => confirmApprove(entry.id, entry.type)}>
                                 Approve
                               </Button>
@@ -1045,9 +1099,11 @@ const Financials = () => {
       <AlertDialog open={isVoidModalOpen} onOpenChange={setIsVoidModalOpen}>
         <AlertDialogContent className="bg-[#013333] border-red-500/30">
           <AlertDialogHeader>
-            <AlertDialogTitle className="text-red-400">Void Invoice?</AlertDialogTitle>
+            <AlertDialogTitle className="text-red-400">
+              {voidTargetType === 'Expense' ? 'Void Expense?' : 'Void Invoice / Sale?'}
+            </AlertDialogTitle>
             <AlertDialogDescription className="text-[#94A3B8]">
-              This action is permanent and cannot be undone. The invoice will be permanently marked as Void, and its value will be removed from your total revenue.
+              This action is permanent and cannot be undone. This {voidTargetType === 'Expense' ? 'expense' : 'sale'} will be permanently marked as Void and excluded from your valid {voidTargetType === 'Expense' ? 'expenses' : 'revenue'}.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

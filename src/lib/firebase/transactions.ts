@@ -53,3 +53,41 @@ export const createInvoiceTransaction = async (payload: TransactionPayload): Pro
     throw new Error("Failed to generate sequential invoice. Please try again.");
   }
 };
+
+export const approveInvoiceTransaction = async (saleId: string): Promise<void> => {
+  const counterRef = doc(db, 'counters', 'invoices');
+  const saleDocRef = doc(db, 'sales', saleId);
+
+  try {
+    await runTransaction(db, async (transaction) => {
+      const saleDoc = await transaction.get(saleDocRef);
+      if (!saleDoc.exists()) {
+        throw new Error("Draft sale not found.");
+      }
+
+      const saleData = saleDoc.data();
+      if (saleData.invoice_id) {
+        transaction.update(saleDocRef, { status: 'Paid' });
+        return;
+      }
+
+      const counterDoc = await transaction.get(counterRef);
+      let nextIdNumber = 1;
+      if (counterDoc.exists()) {
+        nextIdNumber = (counterDoc.data().current_value || 0) + 1;
+      }
+
+      const invoiceId = `INV-${String(nextIdNumber).padStart(3, '0')}`;
+
+      transaction.update(saleDocRef, {
+        status: 'Paid',
+        invoice_id: invoiceId,
+      });
+
+      transaction.set(counterRef, { current_value: nextIdNumber }, { merge: true });
+    });
+  } catch (error: any) {
+    console.error("Approve Invoice Transaction Failed:", error);
+    throw new Error("Failed to approve sales draft. Please try again.");
+  }
+};
