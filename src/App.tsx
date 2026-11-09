@@ -2,6 +2,7 @@ import { Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { DataProvider } from '@/contexts/DataContext';
+import { RetailProvider } from '@/contexts/RetailContext';
 import { Toaster } from 'sonner';
 
 // --- 1. EAGER IMPORTS (Crucial for initial load) ---
@@ -25,6 +26,8 @@ const Financials = lazy(() => import('@/pages/admin/Financials'));
 const Settings = lazy(() => import('@/pages/admin/BotAccess'));
 const NotFound = lazy(() => import('@/pages/NotFound'));
 const AutomaticFeeding = lazy(() => import('@/pages/AutomaticFeeding'));
+const SellerPOS = lazy(() => import('@/pages/retail/SellerPOS'));
+const AdminRetail = lazy(() => import('@/pages/admin/AdminRetail'));
 
 // --- 3. SECURITY GUARD ---
 // This wrapper ensures only logged-in users can access the dashboard routes.
@@ -32,6 +35,7 @@ const RootRedirect = () => {
   const { user, loading } = useAuth();
   if (loading) return null;
   if (user?.role === "admin" || user?.role === "super-admin") return <Navigate to="/admin" replace />;
+  if (user?.role === "retail_seller") return <Navigate to="/pos" replace />;
   return <Navigate to="/dashboard" replace />;
 };
 
@@ -58,6 +62,7 @@ function App() {
   return (
     <AuthProvider>
       <DataProvider>
+        <RetailProvider>
         <Router>
           {/* Notifications component */}
           <Toaster position="top-center" richColors theme="dark" />
@@ -116,6 +121,22 @@ function App() {
                 element={
                   <Suspense fallback={<div className="p-8 text-center text-[#14B8A6]">Loading Feeding Control...</div>}>
                     <AutomaticFeeding />
+                  </Suspense>
+                }
+              />
+              <Route
+                path="/pos"
+                element={
+                  <Suspense fallback={<div className="p-8 text-center text-[#14B8A6]">Loading Retail POS...</div>}>
+                    <SellerPOS />
+                  </Suspense>
+                }
+              />
+              <Route
+                path="/admin/retail"
+                element={
+                  <Suspense fallback={<div className="p-8 text-center text-[#14B8A6]">Loading Admin Retail Hub...</div>}>
+                    <AdminRetail />
                   </Suspense>
                 }
               />
@@ -188,6 +209,7 @@ function App() {
             </Route>
           </Routes>
         </Router>
+        </RetailProvider>
       </DataProvider>
     </AuthProvider>
   );

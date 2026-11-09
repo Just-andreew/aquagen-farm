@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
-import { Menu, X, Home, ListTodo, FileText, Package, Users, BarChart, LogOut, DollarSign, Settings as SettingsIcon, Droplet } from 'lucide-react';
+import { Menu, X, Home, ListTodo, FileText, Package, Users, BarChart, LogOut, DollarSign, Settings as SettingsIcon, Droplet, Store, ShoppingCart } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 
 interface LayoutProps {
@@ -28,10 +28,17 @@ export const Layout = ({ children }: LayoutProps) => {
 
   if (user?.role === 'supervisor') {
     technicianLinks.push({ to: '/feeding', icon: Droplet, label: 'Feeding' });
+    technicianLinks.push({ to: '/pos', icon: ShoppingCart, label: 'Retail POS' });
   }
+
+  const retailSellerLinks = [
+    { to: '/pos', icon: ShoppingCart, label: 'Retail POS' },
+  ];
 
   const adminLinks = [
     { to: '/admin', icon: Home, label: 'Dashboard' },
+    { to: '/admin/retail', icon: Store, label: 'Retail Hub' },
+    { to: '/pos', icon: ShoppingCart, label: 'POS Terminal' },
     { to: '/admin/management', icon: Users, label: 'Management' },
     { to: '/admin/financials', icon: DollarSign, label: 'Financials' },
     { to: '/admin/logs', icon: FileText, label: 'Logs' },
@@ -41,7 +48,12 @@ export const Layout = ({ children }: LayoutProps) => {
     { to: '/feeding', icon: Droplet, label: 'Feeding' },
   ];
 
-  const links = user?.role === 'admin' ? adminLinks : technicianLinks;
+  const links =
+    user?.role === 'admin'
+      ? adminLinks
+      : user?.role === 'retail_seller'
+      ? retailSellerLinks
+      : technicianLinks;
 
   const desktopWidthClass = isPinned ? 'lg:w-64' : 'lg:w-16 lg:hover:w-64';
   const mobileTransformClass = mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0';

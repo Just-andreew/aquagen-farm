@@ -10,7 +10,7 @@ import { doc, getDoc, setDoc } from 'firebase/firestore'; // <--- ADD setDoc
 import { auth, db } from '@/lib/firebase';
 import { toast } from 'sonner';
 
-type Role = 'admin' | 'supervisor' | 'farm_technician';
+export type Role = 'admin' | 'supervisor' | 'farm_technician' | 'retail_seller';
 
 interface User {
   id: string;

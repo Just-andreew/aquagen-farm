@@ -8,6 +8,12 @@ service cloud.firestore {
       return request.auth != null && (role == 'admin' || role == 'super-admin');
     }
 
+    // Helper function for retail staff (sellers, supervisors, and admins)
+    function isRetailStaff() {
+      let role = get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+      return request.auth != null && (role == 'retail_seller' || role == 'supervisor' || role == 'admin' || role == 'super-admin');
+    }
+
     match /users/{userId} {
       allow read: if request.auth != null;
       allow write: if request.auth.uid == userId || isAdmin();
@@ -19,8 +25,7 @@ service cloud.firestore {
     }
 
     match /counters/{counterId} {
-      allow read, update: if isAdmin();
-      allow create: if isAdmin();
+      allow read, update, create: if isAdmin() || isRetailStaff();
       allow delete: if false; 
     }
 
@@ -37,7 +42,7 @@ service cloud.firestore {
     }
 
     match /sales/{saleId} {
-      allow read, create: if isAdmin();
+      allow read, create: if isAdmin() || isRetailStaff();
       
       // Allow delete only if the invoice is a Draft
       allow delete: if isAdmin() && resource.data.status == 'Draft';
@@ -46,11 +51,17 @@ service cloud.firestore {
         // Allow full updates if it's currently a Draft
         resource.data.status == 'Draft' 
         || 
-        // If it's finalized, ONLY allow status updates to Void or Reversed
+        // If it's finalized, ONLY allow status updates to Void or Reversed, or non-destructive retail metadata backfill
         (
           (resource.data.status == 'Pending' || resource.data.status == 'Paid')
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])
-          && request.resource.data.status in ['Void', 'Reversed']
+          && (
+            (
+              request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])
+              && request.resource.data.status in ['Void', 'Reversed']
+            )
+            ||
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['branch_id', 'shift_date_key', 'line_items', 'cogs_total', 'gross_margin'])
+          )
         )
       );
     }
@@ -73,6 +84,43 @@ service cloud.firestore {
 
     match /ponds/{pondId} {
       allow read, write: if request.auth != null;
+    }
+
+    // --- RETAIL MODULE COLLECTIONS ---
+    match /branches/{branchId} {
+      allow read: if request.auth != null;
+      allow create, update: if isAdmin() || isRetailStaff();
+      allow delete: if isAdmin();
+    }
+
+    match /retail_raw_packets/{packetId} {
+      allow read, create, update: if isRetailStaff();
+      allow delete: if isAdmin();
+    }
+
+    match /retail_fried_stock/{stockId} {
+      allow read, create, update: if isRetailStaff();
+      allow delete: if isAdmin();
+    }
+
+    match /retail_conversions/{conversionId} {
+      allow read: if isRetailStaff();
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /retail_deliveries/{deliveryId} {
+      allow read, create, update: if isRetailStaff();
+      allow delete: if isAdmin();
+    }
+
+    match /retail_shifts/{shiftId} {
+      allow read, create, update: if isRetailStaff();
+      allow delete: if isAdmin();
+    }
+
+    match /retail_inventory_history/{historyId} {
+      allow read, create: if isRetailStaff();
+      allow update, delete: if isAdmin();
     }
   }
 }

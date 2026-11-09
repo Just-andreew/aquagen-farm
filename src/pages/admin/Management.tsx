@@ -20,7 +20,7 @@ interface UserProfile {
   id: string;
   name: string;
   email: string;
-  role: 'admin' | 'supervisor' | 'farm_technician';
+  role: 'admin' | 'supervisor' | 'farm_technician' | 'retail_seller';
   created_via?: string;
 }
 
@@ -165,6 +165,7 @@ const Management = () => {
     switch (role) {
       case 'admin': return 'bg-red-500/10 text-red-500 border-red-500/20';
       case 'supervisor': return 'bg-orange-500/10 text-orange-500 border-orange-500/20';
+      case 'retail_seller': return 'bg-purple-500/10 text-purple-400 border-purple-500/20';
       default: return 'bg-[#14B8A6]/10 text-[#5EEAD4] border-[#14B8A6]/20';
     }
   };
@@ -318,7 +319,7 @@ const Management = () => {
                 <div className="space-y-2"><Label className="text-[#94A3B8]">Name</Label><Input value={editName} onChange={(e) => setEditName(e.target.value)} className="bg-[#014D4D] border-[#14B8A6]/30 text-white" /></div>
                 <div className="space-y-2"><Label className="text-[#94A3B8]">Role</Label>
                     <Select value={editRole} onValueChange={setEditRole}><SelectTrigger className="bg-[#014D4D] border-[#14B8A6]/30 text-white"><SelectValue /></SelectTrigger>
-                        <SelectContent className="bg-[#014D4D] border-[#14B8A6]"><SelectItem value="farm_technician">Technician</SelectItem><SelectItem value="supervisor">Supervisor</SelectItem><SelectItem value="admin">Admin</SelectItem></SelectContent>
+                        <SelectContent className="bg-[#014D4D] border-[#14B8A6]"><SelectItem value="farm_technician">Technician</SelectItem><SelectItem value="retail_seller">Retail Seller</SelectItem><SelectItem value="supervisor">Supervisor</SelectItem><SelectItem value="admin">Admin</SelectItem></SelectContent>
                     </Select>
                 </div>
             </div>
