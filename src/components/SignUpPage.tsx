@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
+import { useTheme } from '@/contexts/ThemeContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Sun, Moon } from 'lucide-react';
 import { toast } from 'sonner';
 
 export const SignUpPage = () => {
@@ -12,6 +14,7 @@ export const SignUpPage = () => {
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const { signup, isAuthenticated } = useAuth();
+  const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -37,7 +40,22 @@ export const SignUpPage = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-[#013333]">
+    <div className="min-h-screen flex items-center justify-center p-4 bg-background relative">
+      <div className="absolute top-4 right-4">
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={toggleTheme}
+          title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+          aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+        >
+          {theme === 'dark' ? (
+            <Sun className="w-5 h-5 text-amber-400" />
+          ) : (
+            <Moon className="w-5 h-5 text-teal-600" />
+          )}
+        </Button>
+      </div>
       <Card className="w-full max-w-md bg-[#014D4D] border-[#14B8A6]/30 text-white shadow-2xl">
         <CardHeader className="text-center space-y-2">
           <CardTitle className="text-3xl font-bold text-[#5EEAD4]">Join AquaGen</CardTitle>

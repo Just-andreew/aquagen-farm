@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from 'react-
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { DataProvider } from '@/contexts/DataContext';
 import { RetailProvider } from '@/contexts/RetailContext';
+import { ThemeProvider, useTheme } from '@/contexts/ThemeContext';
 import { Toaster } from 'sonner';
 
 // --- 1. EAGER IMPORTS (Crucial for initial load) ---
@@ -57,15 +58,21 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   return <>{children}</>;
 };
 
+const ThemedToaster = () => {
+  const { theme } = useTheme();
+  return <Toaster position="top-center" richColors theme={theme} />;
+};
+
 // --- 4. MAIN APP COMPONENT ---
 function App() {
   return (
-    <AuthProvider>
-      <DataProvider>
-        <RetailProvider>
-        <Router>
-          {/* Notifications component */}
-          <Toaster position="top-center" richColors theme="dark" />
+    <ThemeProvider>
+      <AuthProvider>
+        <DataProvider>
+          <RetailProvider>
+          <Router>
+            {/* Notifications component */}
+            <ThemedToaster />
           
           <Routes>
             {/* --- PUBLIC ROUTES --- */}
@@ -208,10 +215,11 @@ function App() {
               />
             </Route>
           </Routes>
-        </Router>
-        </RetailProvider>
-      </DataProvider>
-    </AuthProvider>
+          </Router>
+          </RetailProvider>
+        </DataProvider>
+      </AuthProvider>
+    </ThemeProvider>
   );
 }
 

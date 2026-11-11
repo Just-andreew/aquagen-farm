@@ -883,9 +883,9 @@ export default function AdminRetail() {
                     <YAxis stroke="#94A3B8" fontSize={11} />
                     <Tooltip
                       contentStyle={{
-                        backgroundColor: '#013333',
+                        backgroundColor: 'hsl(var(--card))',
                         borderColor: '#14B8A6',
-                        color: '#fff',
+                        color: 'hsl(var(--foreground))',
                         borderRadius: '8px',
                       }}
                     />
@@ -928,9 +928,9 @@ export default function AdminRetail() {
                         </Pie>
                         <Tooltip
                           contentStyle={{
-                            backgroundColor: '#013333',
+                            backgroundColor: 'hsl(var(--card))',
                             borderColor: '#14B8A6',
-                            color: '#fff',
+                            color: 'hsl(var(--foreground))',
                             borderRadius: '8px',
                           }}
                         />

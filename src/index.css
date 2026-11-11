@@ -3,105 +3,79 @@
 @tailwind utilities;
 
 @layer base {
-  :root {
-    --background: 186 100% 15%;
-    --foreground: 180 5% 95%;
-    --card: 186 50% 20%;
-    --card-foreground: 180 5% 95%;
-    --popover: 186 50% 20%;
-    --popover-foreground: 180 5% 95%;
-    --primary: 45 85% 65%;
-    --primary-foreground: 186 100% 15%;
-    --secondary: 180 90% 35%;
-    --secondary-foreground: 180 5% 95%;
-    --muted: 186 30% 25%;
-    --muted-foreground: 180 5% 70%;
-    --accent: 0 70% 70%;
-    --accent-foreground: 0 5% 10%;
-    --destructive: 0 70% 70%;
-    --destructive-foreground: 0 5% 10%;
-    --border: 186 30% 30%;
-    --input: 186 30% 30%;
-    --ring: 45 85% 65%;
-    --radius: 0.5rem;
-  }
-}
+  /* Light mode design system */
+  :root,
+  .light {
+    --background: 180 33% 97%;
+    --foreground: 186 80% 12%;
 
-@layer base {
-  * {
-    @apply border-border;
-  }
-  body {
-    @apply bg-background text-foreground;
-  }
-}
+    --card: 0 0% 100%;
+    --card-foreground: 186 80% 12%;
 
-/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
-All colors MUST be HSL.
-*/
+    --popover: 0 0% 100%;
+    --popover-foreground: 186 80% 12%;
 
-@layer base {
-  :root {
-    --background: 186 100% 5%;
-    --foreground: 180 100% 85%;
+    --primary: 174 84% 32%;
+    --primary-foreground: 0 0% 100%;
 
-    --card: 186 80% 12%;
-    --card-foreground: 180 100% 85%;
+    --secondary: 180 30% 91%;
+    --secondary-foreground: 186 80% 15%;
 
-    --popover: 186 80% 12%;
-    --popover-foreground: 180 100% 85%;
+    --muted: 180 25% 93%;
+    --muted-foreground: 186 25% 40%;
 
-    --primary: 174 72% 56%;
-    --primary-foreground: 186 100% 5%;
-
-    --secondary: 186 60% 20%;
-    --secondary-foreground: 180 100% 85%;
-
-    --muted: 186 40% 18%;
-    --muted-foreground: 180 30% 65%;
-
-    --accent: 174 72% 56%;
-    --accent-foreground: 186 100% 5%;
+    --accent: 174 84% 32%;
+    --accent-foreground: 0 0% 100%;
 
     --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 180 100% 85%;
+    --destructive-foreground: 0 0% 98%;
 
-    --border: 186 50% 20%;
-    --input: 186 50% 20%;
-    --ring: 174 72% 56%;
+    --border: 180 25% 84%;
+    --input: 180 25% 84%;
+    --ring: 174 84% 32%;
 
     --radius: 0.5rem;
 
-    --sidebar-background: 186 80% 10%;
-    --sidebar-foreground: 180 100% 85%;
-    --sidebar-primary: 174 72% 56%;
-    --sidebar-primary-foreground: 186 100% 5%;
-    --sidebar-accent: 186 60% 18%;
-    --sidebar-accent-foreground: 180 100% 85%;
-    --sidebar-border: 186 50% 20%;
-    --sidebar-ring: 174 72% 56%;
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 186 80% 12%;
+    --sidebar-primary: 174 84% 32%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 180 30% 92%;
+    --sidebar-accent-foreground: 186 80% 12%;
+    --sidebar-border: 180 25% 84%;
+    --sidebar-ring: 174 84% 32%;
   }
 
+  /* Dark mode design system */
   .dark {
     --background: 186 100% 5%;
     --foreground: 180 100% 85%;
+
     --card: 186 80% 12%;
     --card-foreground: 180 100% 85%;
+
     --popover: 186 80% 12%;
     --popover-foreground: 180 100% 85%;
+
     --primary: 174 72% 56%;
     --primary-foreground: 186 100% 5%;
+
     --secondary: 186 60% 20%;
     --secondary-foreground: 180 100% 85%;
+
     --muted: 186 40% 18%;
     --muted-foreground: 180 30% 65%;
+
     --accent: 174 72% 56%;
     --accent-foreground: 186 100% 5%;
+
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 180 100% 85%;
+
     --border: 186 50% 20%;
     --input: 186 50% 20%;
     --ring: 174 72% 56%;
+
     --sidebar-background: 186 80% 10%;
     --sidebar-foreground: 180 100% 85%;
     --sidebar-primary: 174 72% 56%;
@@ -119,6 +93,154 @@ All colors MUST be HSL.
   }
 
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground transition-colors duration-200;
   }
+}
+
+/* ============================================================================
+   Light Mode Theme Adaptation for Hardcoded Dark AquaGen Classes
+   ============================================================================ */
+html.light {
+  color-scheme: light;
+}
+
+html.dark {
+  color-scheme: dark;
+}
+
+/* 1. Primary Card / Modal / Container Surfaces (#013333) */
+html.light .bg-\[\#013333\] {
+  background-color: #ffffff !important;
+  box-shadow: 0 1px 3px 0 rgba(15, 118, 110, 0.08), 0 1px 2px -1px rgba(15, 118, 110, 0.06);
+}
+html.light .bg-\[\#013333\]\/80 {
+  background-color: rgba(255, 255, 255, 0.92) !important;
+}
+html.light .bg-\[\#013333\]\/70 {
+  background-color: rgba(240, 253, 250, 0.9) !important;
+}
+
+/* 2. Secondary / Input / Recessed Surfaces (#014D4D) */
+html.light .bg-\[\#014D4D\] {
+  background-color: #f0fdfa !important;
+}
+html.light .bg-\[\#014D4D\]\/70 {
+  background-color: rgba(240, 253, 250, 0.85) !important;
+}
+html.light .bg-\[\#014D4D\]\/60 {
+  background-color: rgba(240, 253, 250, 0.75) !important;
+}
+html.light .bg-\[\#014D4D\]\/50 {
+  background-color: rgba(240, 253, 250, 0.65) !important;
+}
+html.light .bg-\[\#014D4D\]\/40 {
+  background-color: rgba(240, 253, 250, 0.55) !important;
+}
+html.light .bg-\[\#014D4D\]\/30 {
+  background-color: rgba(240, 253, 250, 0.45) !important;
+}
+
+/* 3. Black translucent recessed slots (Tables, Kanban columns, Log cards) */
+html.light .bg-black\/10 {
+  background-color: rgba(15, 118, 110, 0.04) !important;
+}
+html.light .bg-black\/20 {
+  background-color: #f1f5f9 !important;
+}
+html.light .bg-black\/40 {
+  background-color: #f8fafc !important;
+  border-color: rgba(20, 184, 166, 0.25) !important;
+}
+
+/* 4. Typography Overrides for Light Backgrounds */
+html.light .text-\[\#5EEAD4\] {
+  color: #0f766e !important;
+}
+html.light .text-\[\#5EEAD4\]\/70 {
+  color: rgba(15, 118, 110, 0.75) !important;
+}
+html.light .placeholder\:text-\[\#5EEAD4\]\/50::placeholder {
+  color: rgba(15, 118, 110, 0.5) !important;
+}
+html.light .text-\[\#14B8A6\] {
+  color: #0d9488 !important;
+}
+html.light .text-\[\#94A3B8\] {
+  color: #475569 !important;
+}
+html.light .text-\[\#94A3B8\]\/50 {
+  color: rgba(71, 85, 105, 0.6) !important;
+}
+
+/* Adjust light slate & white text used on cards/tables when in light mode */
+html.light .text-white:not(.bg-\[\#14B8A6\], .bg-red-500, .bg-red-600, .bg-emerald-500, .bg-amber-500, .bg-blue-500, [class*="bg-[#14B8A6]"], [class*="bg-red-"], [class*="bg-destructive"]) {
+  color: #0f172a !important;
+}
+html.light .bg-\[\#14B8A6\] .text-white,
+html.light button.bg-\[\#14B8A6\].text-white,
+html.light [data-state="active"].data-\[state\=active\]\:text-white {
+  color: #ffffff !important;
+}
+html.light .text-white\/80 {
+  color: #334155 !important;
+}
+html.light .text-slate-200 {
+  color: #1e293b !important;
+}
+html.light .text-slate-300 {
+  color: #334155 !important;
+}
+html.light .text-slate-400 {
+  color: #475569 !important;
+}
+html.light .text-slate-500 {
+  color: #64748b !important;
+}
+
+/* Adjust bright pastel status text for better contrast on light surfaces */
+html.light .text-teal-400 {
+  color: #0d9488 !important;
+}
+html.light .text-emerald-300,
+html.light .text-emerald-400 {
+  color: #059669 !important;
+}
+html.light .text-amber-300,
+html.light .text-amber-400,
+html.light .text-\[\#FCD34D\] {
+  color: #d97706 !important;
+}
+html.light .text-rose-300,
+html.light .text-rose-400,
+html.light .text-red-300,
+html.light .text-red-400 {
+  color: #e11d48 !important;
+}
+html.light .text-cyan-300,
+html.light .text-cyan-400 {
+  color: #0284c7 !important;
+}
+html.light .text-purple-200,
+html.light .text-purple-300,
+html.light .text-purple-400 {
+  color: #7c3aed !important;
+}
+html.light .text-blue-300,
+html.light .text-blue-400 {
+  color: #2563eb !important;
+}
+html.light .text- emerald-100 {
+  color: #065f46 !important;
+}
+
+/* Alert & notification banners in light mode */
+html.light .bg-red-950\/20,
+html.light .bg-red-950\/40 {
+  background-color: #fef2f2 !important;
+}
+html.light .bg-purple-950\/40 {
+  background-color: #f5f3ff !important;
+}
+html.light .border-\[\#013333\] {
+  border-color: #ffffff !important;
 }

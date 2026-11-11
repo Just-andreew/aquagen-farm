@@ -140,8 +140,8 @@ export default function Dashboard() {
                       ))}
                     </Pie>
                     <Tooltip 
-                        contentStyle={{ backgroundColor: '#013333', borderColor: '#14B8A6', color: '#5EEAD4', borderRadius: '8px' }}
-                        itemStyle={{ color: '#white' }}
+                        contentStyle={{ backgroundColor: 'hsl(var(--card))', borderColor: '#14B8A6', color: 'hsl(var(--foreground))', borderRadius: '8px' }}
+                        itemStyle={{ color: 'hsl(var(--foreground))' }}
                     />
                   </PieChart>
                 </ResponsiveContainer>

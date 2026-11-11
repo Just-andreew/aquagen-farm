@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useTheme } from '@/contexts/ThemeContext';
 import { Button } from '@/components/ui/button';
-import { Menu, X, Home, ListTodo, FileText, Package, Users, BarChart, LogOut, DollarSign, Settings as SettingsIcon, Droplet, Store, ShoppingCart } from 'lucide-react';
+import { Menu, X, Home, ListTodo, FileText, Package, Users, BarChart, LogOut, DollarSign, Settings as SettingsIcon, Droplet, Store, ShoppingCart, Sun, Moon } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 
 interface LayoutProps {
@@ -12,6 +13,7 @@ export const Layout = ({ children }: LayoutProps) => {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [isPinned, setIsPinned] = useState(false);
   const { user, logout } = useAuth();
+  const { theme, toggleTheme } = useTheme();
   const location = useLocation();
 
   useEffect(() => {
@@ -87,9 +89,23 @@ export const Layout = ({ children }: LayoutProps) => {
             <span className="font-bold text-lg hidden sm:inline">AquaGen</span>
           </div>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2 sm:gap-4">
           <span className="text-sm text-muted-foreground hidden sm:inline">{user?.name}</span>
-          <Button variant="ghost" size="icon" onClick={logout}>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={toggleTheme}
+            title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+            aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+            className="text-muted-foreground hover:text-foreground"
+          >
+            {theme === 'dark' ? (
+              <Sun className="w-4 h-4 text-amber-400" />
+            ) : (
+              <Moon className="w-4 h-4 text-teal-600" />
+            )}
+          </Button>
+          <Button variant="ghost" size="icon" onClick={logout} title="Log out">
             <LogOut className="w-4 h-4" />
           </Button>
         </div>
