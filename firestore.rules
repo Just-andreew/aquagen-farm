@@ -51,17 +51,13 @@ service cloud.firestore {
         // Allow full updates if it's currently a Draft
         resource.data.status == 'Draft' 
         || 
-        // If it's finalized, ONLY allow status updates to Void or Reversed, or non-destructive retail metadata backfill
+        // Allow admins to backfill/enrich retail metadata on any historical sale
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['branch_id', 'shift_date_key', 'line_items', 'cogs_total', 'gross_margin', 'type'])
+        ||
+        // If it's finalized, allow status updates to Void or Reversed
         (
-          (resource.data.status == 'Pending' || resource.data.status == 'Paid')
-          && (
-            (
-              request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])
-              && request.resource.data.status in ['Void', 'Reversed']
-            )
-            ||
-            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['branch_id', 'shift_date_key', 'line_items', 'cogs_total', 'gross_margin'])
-          )
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])
+          && request.resource.data.status in ['Void', 'Reversed']
         )
       );
     }
